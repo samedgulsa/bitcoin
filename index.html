@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Binance MiniTicker + BTC Grafik</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+
+        .wrapper {
+            max-width: 1200px;
+            margin: 24px auto;
+            padding: 0 16px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .status {
+            font-size: 13px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+            background: #0b1220;
+            color: #94a3b8;
+        }
+
+        .status.connected {
+            color: #22c55e;
+        }
+
+        .status.error {
+            color: #ef4444;
+        }
+
+        .table-wrap {
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            overflow: auto;
+            background: #0b1220;
+            max-height: 460px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 700px;
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #1e293b;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        th {
+            color: #94a3b8;
+        }
+
+        tr:hover {
+            background: #111b2e;
+        }
+
+        .symbol-btc {
+            color: #f59e0b;
+            font-weight: bold;
+        }
+
+        .price-up {
+            color: #22c55e;
+        }
+
+        .price-down {
+            color: #ef4444;
+        }
+
+        .chart-panel {
+            margin-top: 16px;
+            padding: 12px;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            background: #0b1220;
+        }
+
+        .market-banner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .banner-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .banner-sub {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 2px;
+        }
+
+        .banner-metrics {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(90px, auto));
+            gap: 12px;
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
+        .metric-value {
+            font-size: 14px;
+            margin-top: 2px;
+            font-weight: 600;
+        }
+
+        .iframe-wrap {
+            height: 520px;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid #1e293b;
+        }
+
+        #tv-iframe {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+
+        @media (max-width: 980px) {
+            .banner-metrics {
+                grid-template-columns: repeat(2, minmax(120px, 1fr));
+            }
+
+            .iframe-wrap {
+                height: 440px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrapper">
+        <div class="header">
+            <h2>Binance MiniTicker (USDT)</h2>
+            <div id="status" class="status">Baglaniyor...</div>
+        </div>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sembol</th>
+                        <th>Fiyat (USDT)</th>
+                        <th>24s Yuksek</th>
+                        <th>24s Dusuk</th>
+                        <th>24s Hacim (Q)</th>
+                    </tr>
+                </thead>
+                <tbody id="ticker-body"></tbody>
+            </table>
+        </div>
+
+        <div id="chart-panel" class="chart-panel">
+            <div class="market-banner">
+                <div>
+                    <div class="banner-title">BTC/USDT</div>
+                    <div class="banner-sub">Bitcoin Price</div>
+                </div>
+                <div class="banner-metrics">
+                    <div>
+                        <div class="metric-label">Price</div>
+                        <div id="banner-price" class="metric-value">-</div>
+                    </div>
+                    <div>
+                        <div class="metric-label">24h Chg</div>
+                        <div id="banner-change" class="metric-value">-</div>
+                    </div>
+                    <div>
+                        <div class="metric-label">24h High</div>
+                        <div id="banner-high" class="metric-value">-</div>
+                    </div>
+                    <div>
+                        <div class="metric-label">24h Low</div>
+                        <div id="banner-low" class="metric-value">-</div>
+                    </div>
+                    <div>
+                        <div class="metric-label">24h Vol(USDT)</div>
+                        <div id="banner-volume" class="metric-value">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="iframe-wrap">
+                <iframe id="tv-iframe" scrolling="no" allowtransparency="true" frameborder="0"
+                    src="https://www.tradingview-widget.com/embed-widget/advanced-chart">
+                </iframe>
+            </div>
+        </div>
+    </div>
+
+    <script src="./js/main.js"></script>
+</body>
+
+</html>
