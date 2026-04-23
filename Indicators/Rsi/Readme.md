@@ -1,10 +1,14 @@
-## 📊 RSI – Temel Yorumlama
+## 📊 RSI (Relative Strength Index)
 
-### 🔢 Temel Seviyeler
-- **70 üzeri** → Aşırı alım (fiyat fazla yükselmiş olabilir)  
-- **30 altı** → Aşırı satım (fiyat fazla düşmüş olabilir)  
+### 🔎 Doğru Kullanım
 
----
+RSI tek başına kullanılmamalıdır. Daha sağlıklı sonuçlar için:
+
+- 📊 Trend analizi  
+- 📦 Hacim verisi  
+- 📍 Destek / direnç seviyeleri  
+
+ile birlikte değerlendirilmelidir.
 
 ### 📈 Ne Anlama Gelir?
 - RSI **30’dan yukarı çıkarsa** → Yükseliş ihtimali artar  
