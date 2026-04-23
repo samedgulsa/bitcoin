@@ -1,7 +1,22 @@
+## 📊 MACD (Moving Average Convergence Divergence)
+
+MACD, fiyat momentumunu ölçen ve kesişimlerle **potansiyel al/sat sinyalleri** üreten bir teknik indikatördür.
+
+- 📈 **Aşağıdan yukarı kesişim** → Yükseliş sinyali  
+- 📉 **Yukarıdan aşağı kesişim** → Düşüş sinyali  
+
+> ⚠️ MACD gecikmeli (lagging) çalışır ve özellikle yatay piyasalarda **yanlış (çöp) sinyaller** üretebilir.
+
+🔎 Bu nedenle tek başına kullanılmamalıdır;  
+trend, hacim ve destek/direnç seviyeleri ile birlikte değerlendirilmelidir.
+
+✅ Doğru kullanıldığında güçlü bir **teyit aracı**,  
+❌ tek başına kullanıldığında ise **yanıltıcı bir gösterge** olabilir.
+
+
 ## ⏱️ Zaman Dilimi (Timeframe)
 
-* Varsayılan olarak **15 dakikalık (15m)** mum verileri kullanılır
-* Farklı zaman dilimleri için `interval` parametresini değiştirmeniz yeterlidir
+* Zaman dilimi önemlidir , uzun vadeli ve kısa vadeli yatırımcılar dikkat etmelidir
 
 **Desteklenen örnekler:**
 
@@ -10,6 +25,3 @@
 * `1h` → 1 Saat
 * `4h` → 4 Saat
 * `1d` → 1 Gün
-
-
-
