@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BTC/USDT Professional MA Chart</title>
+    <style>
+        body { background: #131722; color: #d1d4dc; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #container { position: relative; margin-top: 20px; width: 95vw; }
+        canvas { background: #131722; cursor: crosshair; border: 1px solid #2a2e39; width: 100%; }
+        .legend { 
+            position: absolute; top: 15px; left: 15px; 
+            background: rgba(19, 23, 34, 0.9); padding: 12px; border-radius: 6px;
+            font-size: 12px; line-height: 1.6; border: 1px solid #363a45; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            pointer-events: none; z-index: 10;
+        }
+        .row { display: flex; justify-content: space-between; gap: 20px; border-bottom: 1px solid #2a2e39; padding: 2px 0; }
+        .val { font-family: 'Roboto Mono', monospace; font-weight: bold; color: #fff; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div class="legend">
+            <div style="font-weight: bold; color: #26a69a; margin-bottom: 5px;">BTC/USDT 15m</div>
+            <div class="row"><span>Fiyat:</span> <span id="pVal" class="val">--</span></div>
+            <div class="row"><span style="color:#f0b90b">SMA (7):</span> <span id="sVal" class="val">--</span></div>
+            <div class="row"><span style="color:#2196f3">EMA (25):</span> <span id="eVal" class="val">--</span></div>
+            <div class="row"><span style="color:#9c27b0">MA (50):</span> <span id="mVal" class="val">--</span></div>
+        </div>
+        <canvas id="chart"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('chart');
+        const ctx = canvas.getContext('2d');
+        
+        // Eksen boşlukları
+        const RIGHT_MARGIN = 70;
+        const BOTTOM_MARGIN = 40;
+        
+        // Çözünürlük ayarı (Net görünüm için)
+        canvas.width = (window.innerWidth * 0.95);
+        canvas.height = 650;
+
+        let candles = [], sma7 = [], ema25 = [], ma50 = [];
+
+        async function fetchData() {
+            const res = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=200');
+            const data = await res.json();
+            candles = data.map(d => ({
+                t: d[0], o: parseFloat(d[1]), h: parseFloat(d[2]), l: parseFloat(d[3]), c: parseFloat(d[4])
+            }));
+            processIndicators();
+            render();
+        }
+
+        function processIndicators() {
+            // SMA 7 & MA 50 (Basit)
+            const calcSMA = (p) => candles.map((_, i) => i < p-1 ? null : candles.slice(i-p+1, i+1).reduce((a, b) => a + b.c, 0) / p);
+            sma7 = calcSMA(7);
+            ma50 = calcSMA(50);
+
+            // EMA 25 (Üstel)
+            const k = 2 / (25 + 1);
+            let prev = candles[0].c;
+            ema25 = candles.map((c, i) => i < 24 ? null : (prev = (c.c - prev) * k + prev));
+        }
+
+        function render(mX = -1, mY = -1) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const drawW = canvas.width - RIGHT_MARGIN;
+            const drawH = canvas.height - BOTTOM_MARGIN;
+            const minP = Math.min(...candles.map(c => c.l)) * 0.999;
+            const maxP = Math.max(...candles.map(c => c.h)) * 1.001;
+            const range = maxP - minP;
+
+            const getY = (p) => drawH - ((p - minP) / range) * drawH;
+            const cW = drawW / candles.length;
+
+            // 1. Grid (Izgara) ve Eksenler
+            ctx.strokeStyle = '#2a2e39';
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            // Yatay çizgiler ve Fiyat Skalası
+            for (let i = 0; i <= 6; i++) {
+                const p = minP + (range * i / 6);
+                const y = getY(p);
+                ctx.moveTo(0, y); ctx.lineTo(drawW, y);
+                ctx.fillStyle = '#9194a3';
+                ctx.fillText(p.toFixed(0), drawW + 10, y + 4);
+            }
+            ctx.stroke();
+
+            // 2. Mumlar
+            candles.forEach((c, i) => {
+                const x = i * cW;
+                const isUp = c.c >= c.o;
+                ctx.strokeStyle = ctx.fillStyle = isUp ? '#26a69a' : '#ef5350';
+                ctx.beginPath();
+                ctx.moveTo(x + cW/2, getY(c.h)); ctx.lineTo(x + cW/2, getY(c.l));
+                ctx.stroke();
+                ctx.fillRect(x + 1, getY(Math.max(c.o, c.c)), cW - 2, Math.max(Math.abs(getY(c.o) - getY(c.c)), 1));
+            });
+
+            // 3. MA Çizgileri
+            const drawLine = (data, color) => {
+                ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 1.8;
+                data.forEach((v, i) => {
+                    if (!v) return;
+                    const x = i * cW + cW/2;
+                    if (!data[i-1]) ctx.moveTo(x, getY(v)); else ctx.lineTo(x, getY(v));
+                });
+                ctx.stroke();
+            };
+            drawLine(sma7, '#f0b90b');
+            drawLine(ema25, '#2196f3');
+            drawLine(ma50, '#9c27b0');
+
+            // 4. Zaman Skalası
+            ctx.fillStyle = '#9194a3';
+            ctx.textAlign = 'center';
+            candles.forEach((c, i) => {
+                if (i % 40 === 0) {
+                    const time = new Date(c.t).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    ctx.fillText(time, i * cW + cW/2, drawH + 20);
+                }
+            });
+
+            // 5. Crosshair Etkileşimi
+            if (mX > 0 && mX < drawW) {
+                const idx = Math.floor(mX / cW);
+                const c = candles[idx];
+                if (c) {
+                    ctx.setLineDash([5, 5]);
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                    // Dikey
+                    ctx.beginPath(); ctx.moveTo(idx * cW + cW/2, 0); ctx.lineTo(idx * cW + cW/2, drawH); ctx.stroke();
+                    // Yatay
+                    if (mY > 0 && mY < drawH) {
+                        ctx.beginPath(); ctx.moveTo(0, mY); ctx.lineTo(drawW, mY); ctx.stroke();
+                        // Sağ fiyat etiketi
+                        const pAtMouse = minP + ((drawH - mY) / drawH) * range;
+                        ctx.fillStyle = '#363a45';
+                        ctx.fillRect(drawW, mY - 10, RIGHT_MARGIN, 20);
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(pAtMouse.toFixed(2), drawW + 35, mY + 4);
+                    }
+                    
+                    // Legend Güncelle
+                    document.getElementById('pVal').innerText = c.c.toFixed(2);
+                    document.getElementById('sVal').innerText = sma7[idx] ? sma7[idx].toFixed(2) : '--';
+                    document.getElementById('eVal').innerText = ema25[idx] ? ema25[idx].toFixed(2) : '--';
+                    document.getElementById('mVal').innerText = ma50[idx] ? ma50[idx].toFixed(2) : '--';
+                }
+            }
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            const r = canvas.getBoundingClientRect();
+            render(e.clientX - r.left, e.clientY - r.top);
+        });
+
+        fetchData();
+    </script>
+</body>
+</html>
