@@ -20,3 +20,15 @@
 - veya uzun süre **30 altında kalabilir**  
 
 👉 Bu yüzden: **“70 oldu, sat” mantığı her zaman doğru değildir**
+
+## ⏱️ Zaman Dilimi (Timeframe)
+
+* Zaman dilimi önemlidir , uzun vadeli ve kısa vadeli yatırımcılar dikkat etmelidir
+
+**Desteklenen örnekler:**
+
+* `1m` → 1 Dakika
+* `15m` → 15 Dakika
+* `1h` → 1 Saat
+* `4h` → 4 Saat
+* `1d` → 1 Gün
