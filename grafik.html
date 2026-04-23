@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="tr">
+
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Binance MiniTicker + BTC Grafik</title>
+	<style>
+		body {
+			margin: 0;
+			font-family: Arial, sans-serif;
+			background:
+				radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 28%),
+				radial-gradient(circle at top right, rgba(14, 165, 233, 0.10), transparent 24%),
+				linear-gradient(180deg, #0f172a 0%, #0c1426 52%, #0a1220 100%);
+			color: #e2e8f0;
+			position: relative;
+			overflow-x: hidden;
+		}
+
+		body::before,
+		body::after {
+			content: "";
+			position: fixed;
+			inset: auto;
+			border-radius: 50%;
+			pointer-events: none;
+			z-index: 0;
+			filter: blur(18px);
+			opacity: 0.55;
+		}
+
+		body::before {
+			width: 320px;
+			height: 320px;
+			left: -110px;
+			top: 120px;
+			background: rgba(37, 99, 235, 0.12);
+		}
+
+		body::after {
+			width: 260px;
+			height: 260px;
+			right: -90px;
+			bottom: 140px;
+			background: rgba(56, 189, 248, 0.10);
+		}
+
+		.wrapper {
+			max-width: 1200px;
+			margin: 24px auto;
+			padding: 0 16px;
+			position: relative;
+			z-index: 1;
+		}
+
+		.brand-wrap {
+			display: flex;
+			justify-content: center;
+			margin-bottom: 16px;
+		}
+
+		.brand-name {
+			padding: 0;
+			font-family: "Bodoni MT", "Didot", "Times New Roman", serif;
+			font-size: 34px;
+			font-weight: 700;
+			letter-spacing: 0.2em;
+			color: #ffffff;
+			text-shadow: 0 2px 12px rgba(2, 6, 23, 0.45);
+		}
+
+		.header {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 12px;
+			margin-bottom: 12px;
+		}
+
+		.header-right {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.status {
+			font-size: 13px;
+			padding: 6px 10px;
+			border-radius: 8px;
+			border: 1px solid #334155;
+			background: rgba(11, 18, 32, 0.82);
+			backdrop-filter: blur(8px);
+			color: #94a3b8;
+		}
+
+		.status.connected {
+			color: #22c55e;
+		}
+
+		.status.error {
+			color: #ef4444;
+		}
+
+		.table-wrap {
+			margin-top: 16px;
+			border: 1px solid #1e293b;
+			border-radius: 10px;
+			overflow: auto;
+			background: rgba(11, 18, 32, 0.84);
+			backdrop-filter: blur(10px);
+			max-height: 460px;
+		}
+
+		.news-section {
+			margin-top: 18px;
+			padding: 12px;
+			border: 1px solid #1e293b;
+			border-radius: 10px;
+			background: rgba(11, 18, 32, 0.84);
+			backdrop-filter: blur(10px);
+		}
+
+		.news-title {
+			font-size: 16px;
+			font-weight: 700;
+			margin-bottom: 0;
+			color: #dbe5f5;
+		}
+
+		.news-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 10px;
+			margin-bottom: 12px;
+		}
+
+		.news-update-btn {
+			padding: 7px 11px;
+			border-radius: 8px;
+			border: 1px solid #3a4f72;
+			background: #142644;
+			color: #dfe9f8;
+			font-size: 12px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+
+		.news-update-btn:hover {
+			background: #1c3358;
+		}
+
+		.news-grid {
+			display: grid;
+			grid-template-columns: repeat(5, minmax(140px, 1fr));
+			gap: 10px;
+		}
+
+		.news-card {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			padding: 10px;
+			border-radius: 10px;
+			border: 1px solid #2a3b59;
+			background: linear-gradient(180deg, #13213a 0%, #0c162a 100%);
+		}
+
+		.news-source {
+			font-size: 14px;
+			font-weight: 700;
+			color: #f8fafc;
+		}
+
+		.news-status {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 7px 10px;
+			border-radius: 8px;
+			border: 1px dashed #4a638f;
+			background: #12243f;
+			color: #f3f6fb;
+			font-size: 12px;
+			font-weight: 600;
+		}
+
+		.news-time {
+			font-size: 11px;
+			color: #8ea1c2;
+		}
+
+		.news-card.flash {
+			animation: newsFlash 0.5s ease;
+		}
+
+		@keyframes newsFlash {
+			0% {
+				box-shadow: 0 0 0 rgba(99, 124, 170, 0);
+			}
+			50% {
+				box-shadow: 0 0 0 2px rgba(99, 124, 170, 0.35);
+			}
+			100% {
+				box-shadow: 0 0 0 rgba(99, 124, 170, 0);
+			}
+		}
+
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			min-width: 700px;
+		}
+
+		th,
+		td {
+			padding: 10px 12px;
+			border-bottom: 1px solid #1e293b;
+			text-align: left;
+			font-size: 13px;
+		}
+
+		th {
+			color: #94a3b8;
+		}
+
+		tr:hover {
+			background: #111b2e;
+		}
+
+		.symbol-btc {
+			color: #f59e0b;
+			font-weight: bold;
+		}
+
+		.price-up {
+			color: #22c55e;
+		}
+
+		.price-down {
+			color: #ef4444;
+		}
+
+		.chart-panel {
+			margin-top: 16px;
+			padding: 12px;
+			border: 1px solid #1e293b;
+			border-radius: 10px;
+			background: rgba(11, 18, 32, 0.84);
+			backdrop-filter: blur(10px);
+		}
+
+		.market-banner {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 12px;
+			margin-bottom: 12px;
+			padding-bottom: 8px;
+			border-bottom: 1px solid #1e293b;
+		}
+
+		.banner-title {
+			font-size: 20px;
+			font-weight: 700;
+		}
+
+		.banner-title-row {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+		}
+
+		.bitcoin-live {
+			padding: 4px 10px;
+			border-radius: 999px;
+			font-size: 13px;
+			font-weight: 700;
+			border: 1px solid #334155;
+			background: #111b2e;
+			color: #f8fafc;
+		}
+
+		.banner-sub {
+			font-size: 12px;
+			color: #94a3b8;
+			margin-top: 2px;
+		}
+
+		.banner-metrics {
+			display: grid;
+			grid-template-columns: repeat(5, minmax(90px, auto));
+			gap: 12px;
+		}
+
+		.metric-label {
+			font-size: 11px;
+			color: #94a3b8;
+		}
+
+		.metric-value {
+			font-size: 14px;
+			margin-top: 2px;
+			font-weight: 600;
+		}
+
+		.iframe-wrap {
+			height: 520px;
+			border-radius: 10px;
+			overflow: hidden;
+			border: 1px solid #1e293b;
+		}
+
+		.chart-chat-row {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) 320px;
+			gap: 12px;
+		}
+
+		.ai-side {
+			display: flex;
+			flex-direction: column;
+			gap: 10px;
+			padding: 10px;
+			border-radius: 10px;
+			border: 1px solid #1e293b;
+			background: linear-gradient(180deg, rgba(16, 26, 45, 0.94) 0%, rgba(10, 19, 36, 0.94) 100%);
+			backdrop-filter: blur(10px);
+			min-height: 520px;
+		}
+
+		.ai-title {
+			font-size: 14px;
+			font-weight: 700;
+		}
+
+		.ai-head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+		}
+
+		.login-open-btn {
+			padding: 7px 10px;
+			border-radius: 8px;
+			border: 1px solid #2d3e5b;
+			background: #132037;
+			color: #e2e8f0;
+			font-size: 12px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+
+		.login-open-btn:hover {
+			background: #1a2c49;
+		}
+
+		.ai-sub {
+			font-size: 12px;
+			color: #94a3b8;
+		}
+
+		.signal-grid {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 8px;
+		}
+
+		.signal-box {
+			padding: 10px;
+			border-radius: 12px;
+			border: 1px solid #d1a213;
+			background: radial-gradient(circle at top, #f8dd70 0%, #d9a60e 70%);
+			text-align: center;
+			cursor: pointer;
+			transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+		}
+
+		.signal-box:hover {
+			transform: translateY(-2px);
+			border-color: #f6c945;
+			box-shadow: 0 6px 16px rgba(217, 166, 14, 0.35);
+		}
+
+		.signal-box:active {
+			transform: translateY(0);
+		}
+
+		.signal-label {
+			font-size: 11px;
+			color: #2f2500;
+			font-weight: 700;
+		}
+
+		.signal-value {
+			display: none;
+		}
+
+		.signal-box.active-buy {
+			border-color: #ffe08a;
+			box-shadow: 0 0 0 1px rgba(255, 224, 138, 0.7) inset, 0 0 18px rgba(255, 204, 64, 0.4);
+		}
+
+		.signal-box.active-sell {
+			border-color: #ffe08a;
+			box-shadow: 0 0 0 1px rgba(255, 224, 138, 0.7) inset, 0 0 18px rgba(255, 204, 64, 0.4);
+		}
+
+		.chat-log {
+			flex: 1;
+			overflow-y: auto;
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			padding-right: 2px;
+		}
+
+		.chat-msg {
+			padding: 8px;
+			border-radius: 8px;
+			max-width: 92%;
+			font-size: 12px;
+			line-height: 1.45;
+			border: 1px solid #243145;
+			background: #0b1220;
+		}
+
+		.chat-msg.user {
+			align-self: flex-end;
+			background: #172036;
+			border-color: #334155;
+		}
+
+		.chat-msg.bot {
+			align-self: flex-start;
+		}
+
+		.chat-form {
+			display: flex;
+			gap: 8px;
+		}
+
+		.chat-input {
+			flex: 1;
+			min-width: 0;
+			padding: 10px;
+			border-radius: 8px;
+			border: 1px solid #334155;
+			background: #0b1220;
+			color: #e2e8f0;
+			font-size: 12px;
+		}
+
+		.chat-send {
+			padding: 10px 12px;
+			border-radius: 8px;
+			border: 1px solid #334155;
+			background: #1d4ed8;
+			color: #f8fafc;
+			font-size: 12px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+
+		.chat-send:hover {
+			background: #1e40af;
+		}
+
+		.login-modal {
+			position: fixed;
+			inset: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			background: rgba(2, 6, 23, 0.72);
+			z-index: 999;
+			padding: 16px;
+			opacity: 0;
+			visibility: hidden;
+			pointer-events: none;
+			transition: opacity 0.24s ease, visibility 0.24s ease;
+		}
+
+		.login-modal.show {
+			opacity: 1;
+			visibility: visible;
+			pointer-events: auto;
+		}
+
+		.login-card {
+			width: min(340px, 100%);
+			padding: 18px;
+			border-radius: 16px;
+			border: 1px solid #39537f;
+			background: linear-gradient(180deg, #14233d 0%, #0b1220 100%);
+			box-shadow: 0 18px 34px rgba(2, 6, 23, 0.52);
+			transform: translateY(18px) scale(0.96);
+			opacity: 0;
+			transition: transform 0.28s ease, opacity 0.28s ease;
+			will-change: transform, opacity;
+		}
+
+		.login-modal.show .login-card {
+			transform: translateY(0) scale(1);
+			opacity: 1;
+		}
+
+		.login-brand {
+			font-family: "Bodoni MT", "Didot", "Times New Roman", serif;
+			font-size: 24px;
+			font-weight: 700;
+			letter-spacing: 0.16em;
+			color: #ffffff;
+			text-align: center;
+			margin-bottom: 4px;
+		}
+
+		.login-form {
+			display: grid;
+			gap: 10px;
+		}
+
+		.login-input {
+			padding: 11px 12px;
+			border-radius: 8px;
+			border: 1px solid #334155;
+			background: #0b1220;
+			color: #e2e8f0;
+			font-size: 13px;
+		}
+
+		.login-actions {
+			display: grid;
+			grid-template-columns: 1fr;
+			gap: 8px;
+			margin-top: 6px;
+		}
+
+		.login-btn {
+			padding: 9px 12px;
+			border-radius: 8px;
+			border: 1px solid #334155;
+			background: #1d4ed8;
+			color: #f8fafc;
+			font-size: 12px;
+			font-weight: 600;
+			cursor: pointer;
+			width: 100%;
+		}
+
+		.login-btn.secondary {
+			background: #152238;
+		}
+
+		#tv-iframe {
+			display: block;
+			width: 100%;
+			height: 100%;
+			border: 0;
+		}
+
+		.indicators-grid {
+			margin-top: 16px;
+			display: grid;
+			grid-template-columns: repeat(2, minmax(260px, 1fr));
+			gap: 12px;
+		}
+
+		.indicator-card {
+			padding: 12px;
+			border: 1px solid #1e293b;
+			border-radius: 10px;
+			background: #0b1220;
+		}
+
+		.indicator-title {
+			font-size: 13px;
+			font-weight: 700;
+			color: #cbd5e1;
+			margin-bottom: 8px;
+		}
+
+		.indicator-values {
+			display: grid;
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			gap: 8px;
+		}
+
+		.indicator-values.two-col {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.indicator-values.one-col {
+			grid-template-columns: 1fr;
+		}
+
+		.kv {
+			padding: 8px;
+			border-radius: 8px;
+			background: #101a2d;
+			border: 1px solid #1e293b;
+		}
+
+		.kv-label {
+			font-size: 11px;
+			color: #94a3b8;
+		}
+
+		.kv-value {
+			font-size: 13px;
+			font-weight: 600;
+			margin-top: 4px;
+		}
+
+		.span-two {
+			grid-column: span 2;
+		}
+
+		@media (max-width: 980px) {
+			.brand-name {
+				font-size: 24px;
+				letter-spacing: 0.14em;
+			}
+
+			.banner-metrics {
+				grid-template-columns: repeat(2, minmax(120px, 1fr));
+			}
+
+			.iframe-wrap {
+				height: 440px;
+			}
+
+			.chart-chat-row {
+				grid-template-columns: 1fr;
+			}
+
+			.ai-side {
+				min-height: 420px;
+			}
+
+			.indicators-grid {
+				grid-template-columns: 1fr;
+			}
+
+			.news-grid {
+				grid-template-columns: repeat(2, minmax(130px, 1fr));
+			}
+
+			.news-head {
+				flex-direction: column;
+				align-items: flex-start;
+			}
+
+			.span-two {
+				grid-column: auto;
+			}
+		}
+	</style>
+</head>
+
+<body>
+	<div class="wrapper">
+		<div class="brand-wrap">
+			<div class="brand-name">GULİARGY</div>
+		</div>
+
+		<div class="header">
+			<h2>Binance MiniTicker (USDT)</h2>
+			<div class="header-right">
+				<div id="status" class="status">Baglaniyor...</div>
+				<button id="login-open" class="login-open-btn" type="button">Giris Yap</button>
+			</div>
+		</div>
+
+		<div id="chart-panel" class="chart-panel">
+			<div class="market-banner">
+				<div>
+					<div class="banner-title-row">
+						<div class="banner-title">BITCOIN</div>
+						<div id="bitcoin-live" class="bitcoin-live">-</div>
+					</div>
+					<div class="banner-sub">Bitcoin Price</div>
+				</div>
+				<div class="banner-metrics">
+					<div>
+						<div class="metric-label">Price</div>
+						<div id="banner-price" class="metric-value">-</div>
+					</div>
+					<div>
+						<div class="metric-label">24h Chg</div>
+						<div id="banner-change" class="metric-value">-</div>
+					</div>
+					<div>
+						<div class="metric-label">24h High</div>
+						<div id="banner-high" class="metric-value">-</div>
+					</div>
+					<div>
+						<div class="metric-label">24h Low</div>
+						<div id="banner-low" class="metric-value">-</div>
+					</div>
+					<div>
+						<div class="metric-label">24h Vol(USDT)</div>
+						<div id="banner-volume" class="metric-value">-</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="chart-chat-row">
+				<div class="iframe-wrap">
+					<iframe id="tv-iframe" scrolling="no" allowtransparency="true" frameborder="0"
+						src="https://www.tradingview-widget.com/embed-widget/advanced-chart/?locale=en#%7B%22autosize%22%3Atrue%2C%22symbol%22%3A%22BINANCE%3ABTCUSDT%22%2C%22interval%22%3A%221D%22%2C%22timezone%22%3A%22Europe%2FIstanbul%22%2C%22theme%22%3A%22dark%22%2C%22style%22%3A%221%22%2C%22hide_top_toolbar%22%3Afalse%2C%22hide_legend%22%3Afalse%2C%22save_image%22%3Afalse%2C%22allow_symbol_change%22%3Afalse%2C%22support_host%22%3A%22https%3A%2F%2Fwww.tradingview.com%22%2C%22width%22%3A%22100%25%22%2C%22height%22%3A%22100%25%22%2C%22utm_source%22%3A%22%22%2C%22utm_medium%22%3A%22widget%22%2C%22utm_campaign%22%3A%22advanced-chart%22%2C%22page-uri%22%3A%22__NHTTP__%22%7D">
+					</iframe>
+				</div>
+
+				<aside class="ai-side">
+					<div class="ai-head">
+						<div class="ai-title">Yapay Zeka</div>
+					</div>
+					
+
+					<div class="signal-grid">
+						<div id="signal-buy" class="signal-box">
+							<div class="signal-label">Al mi?</div>
+						</div>
+						<div id="signal-sell" class="signal-box">
+							<div class="signal-label">Sat mi?</div>
+						</div>
+					</div>
+
+					<div id="ai-chat-log" class="chat-log"></div>
+
+					<form id="ai-chat-form" class="chat-form">
+						<input id="ai-chat-input" class="chat-input" type="text" placeholder="Orn: simdi alinir mi?" maxlength="300" />
+						<button class="chat-send" type="submit">Gonder</button>
+					</form>
+				</aside>
+			</div>
+
+			<div class="indicators-grid">
+				<div class="indicator-card">
+					<div class="indicator-title">MA / SMA / EMA</div>
+					<div class="indicator-values">
+						<div class="kv">
+							<div class="kv-label">MA10</div>
+							<div id="ind-ma" class="kv-value">-</div>
+						</div>
+						<div class="kv">
+							<div class="kv-label">SMA20</div>
+							<div id="ind-sma" class="kv-value">-</div>
+						</div>
+						<div class="kv">
+							<div class="kv-label">EMA20</div>
+							<div id="ind-ema" class="kv-value">-</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="indicator-card">
+					<div class="indicator-title">KDJ</div>
+					<div class="indicator-values">
+						<div class="kv">
+							<div class="kv-label">K</div>
+							<div id="ind-k" class="kv-value">-</div>
+						</div>
+						<div class="kv">
+							<div class="kv-label">D</div>
+							<div id="ind-d" class="kv-value">-</div>
+						</div>
+						<div class="kv">
+							<div class="kv-label">J</div>
+							<div id="ind-j" class="kv-value">-</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="indicator-card">
+					<div class="indicator-title">RSI</div>
+					<div class="indicator-values one-col">
+						<div class="kv">
+							<div class="kv-label">RSI14</div>
+							<div id="ind-rsi" class="kv-value">-</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="indicator-card">
+					<div class="indicator-title">Bollinger Bands</div>
+					<div class="indicator-values">
+						<div class="kv">
+							<div class="kv-label">Upper</div>
+							<div id="ind-bb-up" class="kv-value">-</div>
+						</div>
+						<div class="kv">
+							<div class="kv-label">Middle</div>
+							<div id="ind-bb-mid" class="kv-value">-</div>
+						</div>
+						<div class="kv">
+							<div class="kv-label">Lower</div>
+							<div id="ind-bb-low" class="kv-value">-</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="indicator-card span-two">
+					<div class="indicator-title">MACD</div>
+					<div class="indicator-values two-col">
+						<div class="kv">
+							<div class="kv-label">MACD</div>
+							<div id="ind-macd" class="kv-value">-</div>
+						</div>
+						<div class="kv">
+							<div class="kv-label">Signal</div>
+							<div id="ind-macd-signal" class="kv-value">-</div>
+						</div>
+						<div class="kv span-two">
+							<div class="kv-label">Histogram</div>
+							<div id="ind-macd-hist" class="kv-value">-</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>Sembol</th>
+						<th>Fiyat (USDT)</th>
+						<th>24s Yuksek</th>
+						<th>24s Dusuk</th>
+						<th>24s Hacim (Q)</th>
+					</tr>
+				</thead>
+				<tbody id="ticker-body"></tbody>
+			</table>
+		</div>
+
+		<section class="news-section">
+			<div class="news-head">
+				<div class="news-title">Haberler</div>
+				<button id="news-refresh" class="news-update-btn" type="button">Guncelle</button>
+			</div>
+			<div class="news-grid">
+				<div class="news-card">
+					<div class="news-source">CNN</div>
+					<div class="news-status" data-news-status>Veri Alinamadi</div>
+					<div class="news-time" data-news-time>Son deneme: -</div>
+				</div>
+				<div class="news-card">
+					<div class="news-source">FED</div>
+					<div class="news-status" data-news-status>Veri Alinamadi</div>
+					<div class="news-time" data-news-time>Son deneme: -</div>
+				</div>
+				<div class="news-card">
+					<div class="news-source">Binance</div>
+					<div class="news-status" data-news-status>Veri Alinamadi</div>
+					<div class="news-time" data-news-time>Son deneme: -</div>
+				</div>
+				<div class="news-card">
+					<div class="news-source">Twitter</div>
+					<div class="news-status" data-news-status>Veri Alinamadi</div>
+					<div class="news-time" data-news-time>Son deneme: -</div>
+				</div>
+				<div class="news-card">
+					<div class="news-source">TikTok</div>
+					<div class="news-status" data-news-status>Veri Alinamadi</div>
+					<div class="news-time" data-news-time>Son deneme: -</div>
+				</div>
+			</div>
+		</section>
+	</div>
+
+	<div id="login-modal" class="login-modal">
+		<div class="login-card">
+			<div class="login-brand">GULİARGY</div>
+			<form id="login-form" class="login-form">
+				<input class="login-input" id="login-name" type="text" placeholder="Ad Soyad" required />
+				<input class="login-input" id="login-phone" type="tel" placeholder="Telefon Numarasi" required />
+				<input class="login-input" id="login-email" type="email" placeholder="E-mail Adresi" required />
+				<div class="login-actions">
+					<button id="login-close" class="login-btn secondary" type="button">Kapat</button>
+					<button class="login-btn" type="submit">Onayla</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<script src="./js/main.js"></script>
+</body>
+
+</html>
