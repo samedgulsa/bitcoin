@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Binance RSI Pro + Crosshair</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0b0e11;
+            --card: #1e2329;
+            --yellow: #f0b90b;
+            --text: #eaecef;
+        }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { width: 95%; max-width: 1100px; background: var(--card); padding: 25px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .header { display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        canvas { width: 100% !important; height: 500px !important; cursor: crosshair; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2 style="color: var(--yellow); margin:0;">15m RSI</h2>
+        <div id="priceDisplay">Yükleniyor...</div>
+    </div>
+    <canvas id="rsiChart"></canvas>
+</div>
+
+<script>
+/**
+ * YAPILANDIRMA
+ */
+const CONFIG = {
+    symbol: 'BTCUSDT',
+    interval: '15m',
+    limit: 1000,
+    rsiPeriod: 14,
+    colors: {
+        yellow: '#f0b90b',
+        text: '#848e9c',
+        grid: '#2b2f36',
+        crosshair: 'rgba(255, 255, 255, 0.4)',
+        safeZone: 'rgba(240, 185, 11, 0.03)'
+    }
+};
+
+/**
+ * 1. TEKNİK ANALİZ MOTORU (RSI Hesaplama)
+ */
+const TechnicalAnalysis = {
+    calculateRSI(closes, period) {
+        let rsi = new Array(closes.length).fill(null);
+        let gains = [], losses = [];
+
+        // Değişimleri hesapla
+        for (let i = 1; i < closes.length; i++) {
+            let diff = closes[i] - closes[i - 1];
+            gains.push(Math.max(0, diff));
+            losses.push(Math.max(0, -diff));
+        }
+
+        // İlk Ortalama (SMA)
+        let avgG = gains.slice(0, period).reduce((a, b) => a + b) / period;
+        let avgL = losses.slice(0, period).reduce((a, b) => a + b) / period;
+
+        // Wilder's Smoothing Yöntemi
+        for (let i = period; i < closes.length; i++) {
+            let rs = avgG / (avgL || 1e-5);
+            rsi[i] = 100 - (100 / (1 + rs));
+            
+            avgG = (avgG * (period - 1) + gains[i]) / period;
+            avgL = (avgL * (period - 1) + losses[i]) / period;
+        }
+        return rsi;
+    }
+};
+
+/**
+ * 2. VERİ SERVİSİ (Binance API)
+ */
+const BinanceService = {
+    async getKlines(symbol, interval, limit) {
+        const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+        try {
+            const res = await fetch(url);
+            return await res.json();
+        } catch (error) {
+            console.error("Veri çekme hatası:", error);
+            return null;
+        }
+    }
+};
+
+/**
+ * 3. GRAFİK EKLENTİLERİ (Plugins)
+ */
+const ChartPlugins = {
+    // Crosshair (Artı Göstergesi) eklentisi
+    crosshair: {
+        id: 'crosshair',
+        afterDraw: (chart) => {
+            if (!chart.crosshair) return;
+            const { ctx, chartArea: { top, bottom, left, right } } = chart;
+            ctx.save();
+            ctx.strokeStyle = CONFIG.colors.crosshair;
+            ctx.setLineDash([3, 3]);
+            
+            // Dikey Çizgi
+            ctx.beginPath();
+            ctx.moveTo(chart.crosshair.x, top);
+            ctx.lineTo(chart.crosshair.x, bottom);
+            ctx.stroke();
+
+            // Yatay Çizgi
+            ctx.beginPath();
+            ctx.moveTo(left, chart.crosshair.y);
+            ctx.lineTo(right, chart.crosshair.y);
+            ctx.stroke();
+            ctx.restore();
+        }
+    },
+    // 70-30 Güvenli Bölge eklentisi
+    safeZone: {
+        id: 'safeZone',
+        beforeDraw: (chart) => {
+            const { ctx, chartArea: { left, width }, scales: { y } } = chart;
+            const y70 = y.getPixelForValue(70);
+            const y30 = y.getPixelForValue(30);
+
+            ctx.save();
+            // Arka plan dolgusu
+            ctx.fillStyle = CONFIG.colors.safeZone;
+            ctx.fillRect(left, y70, width, y30 - y70);
+
+            // Limit çizgileri
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.setLineDash([5, 5]);
+            [70, 30].forEach(v => {
+                const yPos = y.getPixelForValue(v);
+                ctx.beginPath();
+                ctx.moveTo(left, yPos);
+                ctx.lineTo(left + width, yPos);
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+    }
+};
+
+/**
+ * 4. ANA UYGULAMA (Görselleştirme)
+ */
+async function init() {
+    const rawData = await BinanceService.getKlines(CONFIG.symbol, CONFIG.interval, CONFIG.limit);
+    if (!rawData) return;
+
+    const labels = rawData.map(d => new Date(d[0]).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }));
+    const closes = rawData.map(d => parseFloat(d[4]));
+    
+    // RSI hesapla
+    const rsiData = TechnicalAnalysis.calculateRSI(closes, CONFIG.rsiPeriod);
+
+    // UI Güncelle
+    document.getElementById('priceDisplay').innerText = `Fiyat: $${closes[closes.length - 1].toLocaleString()}`;
+
+    // Chart.js render
+    renderRsiChart(labels, rsiData);
+}
+
+function renderRsiChart(labels, data) {
+    const ctx = document.getElementById('rsiChart').getContext('2d');
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                borderColor: CONFIG.colors.yellow,
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            onHover: (e, elements, chart) => {
+                chart.crosshair = { x: e.x, y: e.y };
+                chart.draw();
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: { label: (ctx) => ` RSI: ${ctx.parsed.y.toFixed(2)}` }
+                }
+            },
+            scales: {
+                y: { min: 0, max: 100, grid: { color: CONFIG.colors.grid }, ticks: { color: CONFIG.colors.text } },
+                x: { grid: { display: false }, ticks: { color: CONFIG.colors.text, maxTicksLimit: 10 } }
+            }
+        },
+        plugins: [ChartPlugins.crosshair, ChartPlugins.safeZone]
+    });
+}
+
+// Uygulamayı Başlat
+init();
+</script>
+</body>
+</html>
