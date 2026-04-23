@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>BTC/USDT 1000 Mum Bollinger</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background: #0b0e11; color: white; font-family: sans-serif; margin: 0; padding: 20px; }
+        .chart-wrapper { 
+            position: relative; 
+            height: 650px; 
+            width: 100%; 
+            background: #181a20; 
+            padding: 20px; 
+            border-radius: 12px; 
+            border: 1px solid #2b2f36;
+            box-sizing: border-box;
+        }
+        canvas { width: 100% !important; height: 100% !important; }
+    </style>
+</head>
+<body>
+    <div class="chart-wrapper">
+        <h2 style="margin: 0 0 15px 0; color: #f0b90b; font-weight: 500;">BollingerBant 15m</h2>
+        <canvas id="bbChart"></canvas>
+    </div>
+
+<script>
+async function draw() {
+    // 1000 veri çekiyoruz
+    const res = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=1000');
+    let raw = await res.json();
+
+    // Zaman sıralamasını garantiye al (Eskiden Yeniye)
+    raw.sort((a, b) => a[0] - b[0]);
+
+    const prices = raw.map(d => parseFloat(d[4]));
+    const labels = raw.map(d => new Date(d[0]).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+
+    const period = 20;
+    const stdDevMult = 2;
+
+    // Boşluk kalmaması için sadece hesaplanmış verileri tutacak diziler
+    const finalLabels = [], finalPrices = [], upper = [], mid = [], lower = [];
+
+    for (let i = period - 1; i < prices.length; i++) {
+        const slice = prices.slice(i - period + 1, i + 1);
+        const sma = slice.reduce((a, b) => a + b, 0) / period;
+        const variance = slice.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
+        const stdDev = Math.sqrt(variance);
+
+        finalLabels.push(labels[i]);
+        finalPrices.push(prices[i]);
+        upper.push(sma + (stdDev * stdDevMult));
+        mid.push(sma);
+        lower.push(sma - (stdDev * stdDevMult));
+    }
+
+    const ctx = document.getElementById('bbChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: finalLabels,
+            datasets: [
+                {
+                    label: 'Üst Bant',
+                    data: upper,
+                    borderColor: 'rgba(33, 150, 243, 0.4)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: false
+                },
+                {
+                    label: 'Fiyat',
+                    data: finalPrices,
+                    borderColor: '#ffffff',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    fill: false
+                },
+                {
+                    label: 'Orta Bant',
+                    data: mid,
+                    borderColor: 'rgba(255, 152, 0, 0.4)',
+                    borderWidth: 1,
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    fill: false
+                },
+                {
+                    label: 'Alt Bant',
+                    data: lower,
+                    borderColor: 'rgba(33, 150, 243, 0.4)',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    fill: '-3', // Üst banda kadar olan alanı doldurur
+                    backgroundColor: 'rgba(33, 150, 243, 0.05)'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                y: { 
+                    position: 'right',
+                    grid: { color: '#23262d' },
+                    ticks: { color: '#848e9c', font: { size: 11 } }
+                },
+                x: { 
+                    grid: { display: false },
+                    ticks: { color: '#848e9c', maxTicksLimit: 15, font: { size: 11 } }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: { backgroundColor: '#1e222d', titleColor: '#f0b90b', bodyColor: '#fff' }
+            }
+        }
+    });
+}
+draw();
+</script>
+</body>
+</html>
