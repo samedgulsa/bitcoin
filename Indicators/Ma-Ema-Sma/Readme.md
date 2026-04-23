@@ -5,7 +5,7 @@ Hareketli ortalamalar, fiyatın genel trendini **yumuşatmak ve yönünü görme
 ---
 
 ## 📉 SMA (Simple Moving Average)
-:contentReference[oaicite:0]{index=0}  
+
 - Belirli bir periyottaki fiyatların **basit ortalamasıdır**  
 - Tüm verileri **eşit ağırlıkla** hesaplar  
 - Daha **yavaş ve gecikmeli** tepki verir  
@@ -13,7 +13,7 @@ Hareketli ortalamalar, fiyatın genel trendini **yumuşatmak ve yönünü görme
 ---
 
 ## ⚡ EMA (Exponential Moving Average)
-:contentReference[oaicite:1]{index=1}  
+
 - Son fiyatlara **daha fazla ağırlık verir**  
 - Fiyat değişimlerine **daha hızlı tepki verir**  
 - Daha erken sinyal üretir ama daha fazla dalgalanma gösterebilir  
@@ -21,7 +21,7 @@ Hareketli ortalamalar, fiyatın genel trendini **yumuşatmak ve yönünü görme
 ---
 
 ## 📊 MA (Moving Average)
-:contentReference[oaicite:2]{index=2}  
+
 - Hareketli ortalamaların **genel adıdır**  
 - SMA ve EMA gibi türleri kapsar  
 - Trend yönünü belirlemede temel araçtır  
