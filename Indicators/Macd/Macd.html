@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MACD Pro Terminal - Optimized</title>
+    <style>
+        body { background: #0c0d10; color: #d1d4dc; margin: 0; font-family: 'Courier New', monospace; overflow: hidden; }
+        .header { 
+            padding: 10px 20px; background: #131722; border-bottom: 1px solid #2a2e39; 
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #terminal-container { position: relative; width: 100vw; height: calc(100vh - 40px); }
+        #terminal { width: 100%; height: 100%; background: #0c0d10; }
+        #data-overlay {
+            position: absolute; top: 20px; right: 20px;
+            background: rgba(19, 23, 34, 0.85); padding: 15px;
+            border: 1px solid #363c4e; border-radius: 4px;
+            pointer-events: none; min-width: 180px;
+        }
+        .val-row { display: flex; justify-content: space-between; margin: 5px 0; font-size: 13px; }
+        .m-color { color: #2962FF; } 
+        .s-color { color: #FF6D00; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>Macd 15M</div>
+        <div id="status" style="font-size: 12px; color: #5d606b;">Veri Bekleniyor...</div>
+    </div>
+    
+    <div id="terminal-container">
+        <canvas id="terminal"></canvas>
+        <div id="data-overlay">
+            <div class="val-row"><span>MACD:</span> <span id="m-val" class="m-color">0.00</span></div>
+            <div class="val-row"><span>Sinyal:</span> <span id="s-val" class="s-color">0.00</span></div>
+            <div class="val-row"><span>Hist:</span> <span id="h-val">0.00</span></div>
+        </div>
+    </div>
+
+<script>
+/**
+ * 1. MATEMATİK MOTORU (MACD CORE)
+ * Tüm indikatör hesaplamalarını tek noktada toplar.
+ */
+const MACDEngine = {
+    calculateEMA(data, period) {
+        const k = 2 / (period + 1);
+        let ema = [data[0]];
+        for (let i = 1; i < data.length; i++) {
+            ema.push(data[i] * k + ema[i - 1] * (1 - k));
+        }
+        return ema;
+    },
+
+    getMACDData(prices, fast = 12, slow = 26, signal = 9) {
+        const emaFast = this.calculateEMA(prices, fast);
+        const emaSlow = this.calculateEMA(prices, slow);
+        
+        // MACD Hattı: Hızlı EMA - Yavaş EMA
+        const macdLine = emaFast.map((v, i) => v - emaSlow[i]);
+        
+        // Sinyal Hattı: MACD Hattının EMA'sı
+        const signalLine = this.calculateEMA(macdLine, signal);
+        
+        // Verileri birleştir ve Histogramı (MACD - Sinyal) hesapla
+        return macdLine.map((m, i) => ({
+            m: m,
+            s: signalLine[i],
+            h: m - signalLine[i]
+        }));
+    }
+};
+
+/**
+ * 2. ÇİZİM VE KONTROL MANTIĞI
+ */
+const canvas = document.getElementById('terminal');
+const ctx = canvas.getContext('2d');
+let chartData = [];
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight - 40;
+    if(chartData.length > 0) draw(chartData);
+}
+window.onresize = resize;
+resize();
+
+function draw(data, mouseX = -1) {
+    const w = canvas.width, h = canvas.height, midY = h / 2;
+    const step = w / data.length;
+    ctx.clearRect(0, 0, w, h);
+    
+    // Sıfır Hattı
+    ctx.strokeStyle = "#1e222d";
+    ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(w, midY); ctx.stroke();
+
+    const maxVal = Math.max(...data.map(d => Math.max(Math.abs(d.m), Math.abs(d.s), Math.abs(d.h)))) * 1.2;
+    const scale = (h / 2) / maxVal;
+
+    // Histogram
+    data.forEach((d, i) => {
+        const x = i * step;
+        ctx.fillStyle = d.h >= 0 ? "#26a69a" : "#ef5350";
+        ctx.globalAlpha = 0.7;
+        ctx.fillRect(x + 1, midY, step - 2, -(d.h * scale));
+    });
+    ctx.globalAlpha = 1.0;
+
+    // MACD & Sinyal Çizgileri
+    const drawLine = (prop, color) => {
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2;
+        data.forEach((d, i) => {
+            const x = i * step + step/2, y = midY - (d[prop] * scale);
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    };
+    drawLine('m', "#2962FF"); // MACD
+    drawLine('s', "#FF6D00"); // Signal
+
+    // Crosshair
+    if (mouseX > 0) {
+        const idx = Math.floor(mouseX / step);
+        if (data[idx]) {
+            const d = data[idx];
+            ctx.strokeStyle = "#5d606b"; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(idx * step + step/2, 0); ctx.lineTo(idx * step + step/2, h); ctx.stroke();
+            ctx.setLineDash([]);
+            
+            document.getElementById('m-val').innerText = d.m.toFixed(2);
+            document.getElementById('s-val').innerText = d.s.toFixed(2);
+            const hEl = document.getElementById('h-val');
+            hEl.innerText = d.h.toFixed(2);
+            hEl.style.color = d.h >= 0 ? "#26a69a" : "#ef5350";
+        }
+    }
+}
+
+canvas.addEventListener('mousemove', (e) => chartData.length && draw(chartData, e.clientX));
+
+async function start() {
+    try {
+        const res = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=400');
+        const json = await res.json();
+        const prices = json.map(d => parseFloat(d[4]));
+        
+        // Matematik motorunu kullanarak veriyi hazırla
+        chartData = MACDEngine.getMACDData(prices).slice(-200);
+        
+        document.getElementById('status').innerText = "LIVE DATA CONNECTED";
+        draw(chartData);
+    } catch (e) {
+        document.getElementById('status').innerText = "OFFLINE / SIMULATION";
+    }
+}
+
+start();
+</script>
+</body>
+</html>
