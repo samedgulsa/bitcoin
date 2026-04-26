@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CNN Canlı Haber Takipçisi</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --card: #1a1a26;
+      --card-hover: #1f1f2e;
+      --accent: #e63946;
+      --accent2: #ff6b6b;
+      --border: rgba(255,255,255,0.07);
+      --border-hover: rgba(230,57,70,0.4);
+      --text: #f0f0f5;
+      --muted: #8888aa;
+      --faint: #444466;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', 'SF Pro Display', -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+
+    .cnn-badge {
+      background: var(--accent);
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .brand-name { font-size: 16px; font-weight: 600; color: var(--text); }
+
+    .status-area {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+    }
+
+    .pulse {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      position: relative; flex-shrink: 0;
+    }
+
+    .pulse::after {
+      content: '';
+      position: absolute; inset: -3px;
+      border-radius: 50%;
+      background: rgba(34,197,94,0.3);
+      animation: pulseAnim 2s infinite;
+    }
+
+    .pulse.error { background: var(--accent); }
+    .pulse.error::after { background: rgba(230,57,70,0.3); }
+
+    @keyframes pulseAnim {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.5); opacity: 0; }
+    }
+
+    #status-text { font-size: 12px; color: var(--muted); }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px; margin-bottom: 20px;
+    }
+
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 18px;
+      transition: border-color 0.2s;
+    }
+
+    .stat:hover { border-color: rgba(255,255,255,0.12); }
+    .stat-val { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1; }
+    .stat-val.accent { color: var(--accent); }
+    .stat-val.gold { color: #f59e0b; }
+    .stat-label { font-size: 11px; color: var(--muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .progress-bar {
+      height: 2px; background: var(--surface);
+      border-radius: 2px; margin-bottom: 20px; overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      width: 0%; border-radius: 2px;
+    }
+
+    .controls {
+      display: flex; gap: 10px; margin-bottom: 16px;
+      flex-wrap: wrap; align-items: center;
+    }
+
+    .search-wrap { flex: 1; min-width: 200px; position: relative; }
+
+    .search-wrap input {
+      width: 100%;
+      padding: 9px 14px 9px 36px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text); font-size: 13px;
+      outline: none; transition: border-color 0.2s;
+    }
+
+    .search-wrap input::placeholder { color: var(--faint); }
+    .search-wrap input:focus { border-color: rgba(255,255,255,0.2); }
+
+    .search-icon {
+      position: absolute; left: 12px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--faint); font-size: 14px; pointer-events: none;
+    }
+
+    .filter-btns { display: flex; gap: 6px; }
+
+    .filter-btn {
+      font-size: 12px; padding: 7px 14px;
+      border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted);
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+
+    .filter-btn:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
+    .filter-btn.active { background: var(--accent); border-color: var(--accent); color: white; font-weight: 600; }
+    .filter-btn.saved-active { background: #f59e0b; border-color: #f59e0b; color: #1a0a00; }
+
+    .sort-bar {
+      display: flex; gap: 0; margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sort-tab {
+      font-size: 13px; padding: 8px 16px;
+      background: none; border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted); cursor: pointer;
+      transition: all 0.15s; margin-bottom: -1px;
+    }
+
+    .sort-tab:hover { color: var(--text); }
+    .sort-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden;
+      transition: transform 0.2s, border-color 0.2s, background 0.2s;
+      animation: fadeIn 0.35s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: var(--border-hover);
+      background: var(--card-hover);
+    }
+
+    .card-img {
+      width: 100%; height: 170px;
+      object-fit: cover; display: block;
+      background: var(--surface);
+    }
+
+    .card-no-img {
+      width: 100%; height: 50px;
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .card-no-img span { font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 1px; }
+
+    .card-body { padding: 14px; }
+
+    .card-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      gap: 8px;
+    }
+
+    .card-dates {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .date-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .date-label {
+      color: var(--faint);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+      min-width: 80px;
+    }
+
+    .date-value {
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+
+    .card-badges {
+      display: flex; align-items: center;
+      gap: 6px; flex-shrink: 0;
+    }
+
+    .new-pill {
+      background: rgba(230,57,70,0.15);
+      color: #f87171; font-size: 9px; font-weight: 700;
+      padding: 2px 7px; border-radius: 20px;
+      border: 1px solid rgba(230,57,70,0.3);
+      letter-spacing: 0.5px; text-transform: uppercase; white-space: nowrap;
+    }
+
+    .save-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--faint); font-size: 15px; padding: 2px 4px;
+      border-radius: 4px; transition: color 0.15s, transform 0.15s;
+    }
+
+    .save-btn:hover { transform: scale(1.2); }
+    .save-btn.saved { color: #f59e0b; }
+
+    .card-title {
+      font-size: 13.5px; font-weight: 500;
+      color: var(--text); line-height: 1.55; margin-bottom: 12px;
+    }
+
+    .card-link {
+      font-size: 12px; color: var(--accent2);
+      text-decoration: none; font-weight: 600;
+      display: inline-flex; align-items: center; gap: 4px;
+      opacity: 0.85; transition: opacity 0.15s;
+    }
+
+    .card-link:hover { opacity: 1; text-decoration: underline; }
+
+    .empty {
+      grid-column: 1 / -1;
+      text-align: center; padding: 60px 20px;
+      color: var(--faint); font-size: 14px;
+    }
+
+    #toast {
+      position: fixed; bottom: 20px; right: 20px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 18px;
+      font-size: 13px; color: var(--text);
+      transform: translateY(60px); opacity: 0;
+      transition: all 0.3s ease; z-index: 999; max-width: 280px;
+    }
+
+    #toast.show { transform: translateY(0); opacity: 1; }
+
+    .notif-btn {
+      font-size: 12px; padding: 7px 14px;
+      border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted);
+      cursor: pointer; transition: all 0.15s;
+    }
+
+    .notif-btn:hover { border-color: rgba(255,255,255,0.15); color: var(--text); }
+    .notif-btn.on { border-color: #22c55e; color: #22c55e; }
+
+    @media (max-width: 600px) {
+      body { padding: 14px; }
+      .stat-val { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">
+      <span class="cnn-badge">CNN</span>
+      <span class="brand-name">Canlı Haber Takipçisi</span>
+    </div>
+    <div class="status-area">
+      <div class="pulse" id="dot"></div>
+      <span id="status-text">Bağlanıyor...</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-val" id="total-count">0</div>
+      <div class="stat-label">Toplam haber</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val accent" id="new-count">0</div>
+      <div class="stat-label">Son 30 dakika</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val gold" id="saved-count">0</div>
+      <div class="stat-label">Kaydedilen</div>
+    </div>
+  </div>
+
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress"></div>
+  </div>
+
+  <div class="controls">
+    <div class="search-wrap">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="search-input" placeholder="Haberlerde ara..." />
+    </div>
+    <div class="filter-btns">
+      <button class="filter-btn active" data-filter="all">Tümü</button>
+      <button class="filter-btn" data-filter="saved">⭐ Kaydedilenler</button>
+    </div>
+    <button class="notif-btn" id="notif-btn">🔔 Bildirim</button>
+  </div>
+
+  <div class="sort-bar">
+    <button class="sort-tab active" data-sort="new">En Yeni</button>
+    <button class="sort-tab" data-sort="old">En Eski</button>
+  </div>
+
+  <div id="news-grid" class="grid"></div>
+  <div id="toast"></div>
+
+<script>
+  // =====================
+  // AYARLAR
+  // CORS sorunu varsa: const PROXY = "https://corsproxy.io/?";
+  const PROXY = "";
+  const XML_URL = "https://www.cnn.com/sitemap/news.xml";
+  const INTERVAL_MS = 30000;
+  // =====================
+
+  let allNews = [];
+  let savedUrls = new Set(JSON.parse(localStorage.getItem('cnn_saved') || '[]'));
+  let currentFilter = 'all';
+  let currentSort = 'new';
+  let searchQuery = '';
+  let notifEnabled = false;
+
+  function formatDiff(pubDate, detectedAt) {
+    if (!pubDate || !detectedAt) return '—';
+    const diff = Math.round((new Date(detectedAt) - new Date(pubDate)) / 1000);
+    if (diff < 0) return '—';
+    if (diff < 60) return diff + ' saniye sonra yakalandı';
+    const m = Math.floor(diff / 60);
+    const s = diff % 60;
+    if (m < 60) return m + ' dk ' + s + ' sn sonra yakalandı';
+    const h = Math.floor(m / 60);
+    return h + ' sa ' + (m % 60) + ' dk sonra yakalandı';
+  }
+
+  function formatDate(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr);
+    if (isNaN(d)) return '—';
+    return d.toLocaleString('tr-TR', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  function isNew(dateStr) {
+    return (Date.now() - new Date(dateStr).getTime()) < 30 * 60 * 1000;
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function saveToDisk() {
+    localStorage.setItem('cnn_saved', JSON.stringify([...savedUrls]));
+  }
+
+  function toggleSave(url) {
+    if (savedUrls.has(url)) {
+      savedUrls.delete(url);
+      showToast('Kaydedilenlerden kaldırıldı');
+    } else {
+      savedUrls.add(url);
+      showToast('⭐ Haber kaydedildi');
+    }
+    saveToDisk();
+    updateStats();
+    renderGrid();
+  }
+
+  function updateStats() {
+    document.getElementById('total-count').textContent = allNews.length;
+    document.getElementById('new-count').textContent = allNews.filter(n => isNew(n.pubDate)).length;
+    document.getElementById('saved-count').textContent = savedUrls.size;
+  }
+
+  function renderGrid() {
+    let items = [...allNews];
+    if (currentFilter === 'saved') items = items.filter(n => savedUrls.has(n.loc));
+    if (searchQuery) items = items.filter(n => n.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    if (currentSort === 'old') items.reverse();
+
+    const grid = document.getElementById('news-grid');
+
+    if (items.length === 0) {
+      grid.innerHTML = '<div class="empty">Haber bulunamadı</div>';
+      return;
+    }
+
+    grid.innerHTML = items.map(n => {
+      const sv = savedUrls.has(n.loc);
+      const imgHtml = n.img
+        ? `<img class="card-img" src="${n.img}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'card-no-img\\'><span>Görsel yok</span></div>'">`
+        : `<div class="card-no-img"><span>Görsel yok</span></div>`;
+
+      return `
+        <div class="card">
+          ${imgHtml}
+          <div class="card-body">
+            <div class="card-meta">
+              <div class="card-dates">
+                <div class="date-row">
+                  <span class="date-label">Yayın tarihi</span>
+                  <span class="date-value">${formatDate(n.pubDate)}</span>
+                </div>
+                <div class="date-row">
+                  <span class="date-label">Son güncelleme</span>
+                  <span class="date-value">${formatDate(n.lastmod)}</span>
+                </div>
+                <div class="date-row">
+                  <span class="date-label">Sistemde görüldü</span>
+                  <span class="date-value">${formatDate(n.detectedAt)}</span>
+                </div>
+                <div class="date-row">
+                  <span class="date-label">Yakalanma süresi</span>
+                  <span class="date-value" style="color:#a3e635">${formatDiff(n.pubDate, n.detectedAt)}</span>
+                </div>
+              </div>
+              <div class="card-badges">
+                ${isNew(n.pubDate) ? '<span class="new-pill">Yeni</span>' : ''}
+                <button class="save-btn ${sv ? 'saved' : ''}" onclick="toggleSave(decodeURIComponent('${encodeURIComponent(n.loc)}'))" title="${sv ? 'Kaldır' : 'Kaydet'}">${sv ? '⭐' : '☆'}</button>
+              </div>
+            </div>
+            <div class="card-title">${n.title}</div>
+            <a class="card-link" href="${n.loc}" target="_blank" rel="noopener">Devamını oku →</a>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function startProgress() {
+    const bar = document.getElementById('progress');
+    bar.style.transition = 'none';
+    bar.style.width = '0%';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        bar.style.transition = `width ${INTERVAL_MS}ms linear`;
+        bar.style.width = '100%';
+      });
+    });
+  }
+
+  function parseXML(text) {
+    const xml = new DOMParser().parseFromString(text, 'text/xml');
+    const urlNodes = Array.from(xml.getElementsByTagName('url'));
+    const results = [];
+
+    urlNodes.forEach(node => {
+      const locNodes = node.getElementsByTagName('loc');
+      if (!locNodes.length) return;
+      const loc = locNodes[0].textContent.trim();
+
+      // Başlık
+      let title = '';
+      const newsTitles = node.getElementsByTagName('news:title');
+      if (newsTitles.length) title = newsTitles[0].textContent.trim();
+      if (!title) {
+        const allTitles = node.querySelectorAll('title');
+        for (let t of allTitles) {
+          if (t.textContent && t.textContent.trim()) { title = t.textContent.trim(); break; }
+        }
+      }
+      if (!title) title = 'CNN Haberi';
+
+      // lastmod — her çekimde XML'den gelir, güncellenir
+      const lastmod = node.querySelector('lastmod')?.textContent?.trim() || new Date().toISOString();
+
+      // publication_date — haberin ilk yayın tarihi, sabit kalır
+      let pubDate = '';
+      const pubDateEls = node.getElementsByTagName('news:publication_date');
+      if (pubDateEls.length) pubDate = pubDateEls[0].textContent.trim();
+      if (!pubDate) pubDate = lastmod;
+
+      // Görsel
+      let img = '';
+      const imgLocs = node.getElementsByTagName('image:loc');
+      if (imgLocs.length) {
+        img = imgLocs[0].textContent.trim();
+      } else if (locNodes.length > 1) {
+        img = locNodes[1].textContent.trim();
+      }
+      if (img === loc) img = '';
+
+      results.push({ loc, title, lastmod, pubDate, img });
+    });
+
+    return results;
+  }
+
+  async function updateNews() {
+    const dot = document.getElementById('dot');
+    const statusText = document.getElementById('status-text');
+
+    try {
+      const resp = await fetch(PROXY + XML_URL);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const text = await resp.text();
+      const parsed = parseXML(text);
+
+      let newCount = 0;
+      const existingMap = new Map(allNews.map(n => [n.loc, n]));
+
+      parsed.forEach(item => {
+        if (existingMap.has(item.loc)) {
+          // Sadece lastmod güncelle — pubDate sabit kalır
+          existingMap.get(item.loc).lastmod = item.lastmod;
+        } else {
+          item.detectedAt = new Date().toISOString();
+          allNews.unshift(item);
+          newCount++;
+        }
+      });
+
+      if (allNews.length > 300) allNews = allNews.slice(0, 300);
+
+      // Her çekimde grid'i yenile (lastmod değişmiş olabilir)
+      renderGrid();
+      updateStats();
+
+      if (newCount > 0) {
+        showToast(`${newCount} yeni haber geldi`);
+        if (notifEnabled && document.hidden) {
+          new Notification('CNN Haber Takipçisi', {
+            body: `${newCount} yeni haber var!`,
+            icon: 'https://edition.cnn.com/favicon.ico'
+          });
+        }
+      }
+
+      dot.className = 'pulse';
+      statusText.textContent = `Aktif — ${allNews.length} haber`;
+      startProgress();
+
+    } catch (err) {
+      dot.className = 'pulse error';
+      statusText.textContent = 'Bağlantı hatası — CORS veya ağ sorunu';
+      console.error('CNN Tracker hatası:', err);
+    }
+  }
+
+  document.getElementById('notif-btn').addEventListener('click', async () => {
+    if (!('Notification' in window)) { showToast('Tarayıcınız bildirimleri desteklemiyor'); return; }
+    if (Notification.permission === 'denied') { showToast('Bildirim izni reddedildi. Tarayıcı ayarlarından açın.'); return; }
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      notifEnabled = !notifEnabled;
+      const btn = document.getElementById('notif-btn');
+      btn.className = 'notif-btn' + (notifEnabled ? ' on' : '');
+      btn.textContent = notifEnabled ? '🔔 Bildirim Açık' : '🔔 Bildirim';
+      showToast(notifEnabled ? 'Bildirimler açıldı' : 'Bildirimler kapatıldı');
+    }
+  });
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active', 'saved-active'));
+      btn.classList.add('active');
+      if (btn.dataset.filter === 'saved') btn.classList.add('saved-active');
+      currentFilter = btn.dataset.filter;
+      renderGrid();
+    });
+  });
+
+  document.querySelectorAll('.sort-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.sort-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      currentSort = tab.dataset.sort;
+      renderGrid();
+    });
+  });
+
+  document.getElementById('search-input').addEventListener('input', e => {
+    searchQuery = e.target.value;
+    renderGrid();
+  });
+
+  updateNews();
+  setInterval(updateNews, INTERVAL_MS);
+</script>
+
+</body>
+</html>
