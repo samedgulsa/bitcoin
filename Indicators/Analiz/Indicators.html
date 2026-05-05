@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.1/dist/chartjs-chart-financial.js"></script>
+    <title>Document</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="terminal-grid">
+        <div class="chart-box"><canvas id="ma_ema_smaChart"></canvas></div>
+        <div class="chart-box"><canvas id="macdChart"></canvas></div>
+        <div class="chart-box"><canvas id="rsiChart"></canvas></div>
+        <div class="chart-box"><canvas id="bbChart"></canvas></div>
+        <div class="chart-box macd-box"><canvas id="kdjChart"></canvas></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>

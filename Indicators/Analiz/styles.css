@@ -1,0 +1,36 @@
+body {
+    background: #0b0e11;
+    color: white;
+    font-family: sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+.terminal-grid {
+    display: grid;
+    /* 2 sütunlu bir yapı kuruyoruz */
+    grid-template-columns: 1fr 1fr; 
+    gap: 15px; /* Kutular arası boşluk */
+    padding: 15px;
+    background-color: #0b0e11; /* Binance koyu arka plan */
+    min-height: 100vh;
+}
+
+.chart-box {
+    background: #181a20;
+    border: 1px solid #2b2f36;
+    border-radius: 8px;
+    height: 300px; /* Her bir grafiğin yüksekliği */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #f0b90b; /* Binance sarısı yazı rengi */
+    font-family: sans-serif;
+    padding: 10px;
+}
+
+/* En alttaki MACD kutusunun 2 sütunu birden kaplaması için */
+.macd-box {
+    grid-column: span 2; 
+    height: 350px; /* Alt grafik biraz daha geniş olabilir */
+}
