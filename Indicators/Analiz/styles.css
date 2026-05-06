@@ -71,3 +71,20 @@ body {
     background-color: #f0b90b;
     color: #000;
 }
+
+.maingrafik {
+    width: 100%;
+    height: 500px; /* Ana grafik için ideal yükseklik */
+    background: #181a20;
+    border: 1px solid #2b2f36;
+    border-radius: 8px;
+    margin-top: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+.maingrafik canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}

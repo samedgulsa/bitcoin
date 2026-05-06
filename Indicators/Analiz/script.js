@@ -24,6 +24,7 @@ async function main(interval = "15m") {
     ma_ema_smaChart(raw, indicators)
     const historySignals = scanHistory(raw, indicators);
     renderAnalizPanel(historySignals);
+    mainChart(raw,historySignals)
 }
 
 document.querySelectorAll('.times button').forEach(btn => {
@@ -67,6 +68,7 @@ function scanHistory(raw, indicators) {
             const priceChange = ((closes[futureIdx] - closes[i]) / closes[i]) * 100;
 
             results.push({
+                timestamp: raw[i][0], // Ham milisaniye verisi (Eşleşme için bu şart)
                 time: new Date(raw[i][0]).toLocaleString('tr-TR'),
                 price: closes[i],
                 strength: signalStrength,
@@ -130,6 +132,7 @@ function renderAnalizPanel(signals) {
         </div>
     `;
 }
+
 // Ma-Ema-Sma chart yardımcı fonksiyon
 function getSMA(data, period) {
     return data.map((_, i) => {
@@ -595,6 +598,155 @@ function bbchart(raw, bbData) {
             }
         }
     });
+}
+
+function mainChart(raw, signals = []) {
+    const canvas = document.getElementById("mainChart");
+    const ctx = canvas.getContext('2d');
+    const container = canvas.parentElement;
+
+    // --- DEĞİŞİKLİK BURADA: İlk açılışta tüm veriyi göster ---
+    let visibleCount = raw.length; 
+    let viewStart = 0; 
+    // -------------------------------------------------------
+
+    let isDragging = false;
+    let dragStartX = 0, dragStartView = 0;
+    let mouseX = -1, mouseY = -1;
+
+    const syncSize = () => {
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+    };
+
+    const draw = () => {
+        const W = canvas.width, H = canvas.height;
+        const PAD_TOP = 40, PAD_BOTTOM = 30, RIGHT_PANEL = 70;
+        const chartW = W - RIGHT_PANEL, chartH = H - PAD_BOTTOM;
+
+        ctx.fillStyle = '#181a20';
+        ctx.fillRect(0, 0, W, H);
+
+        const visible = raw.slice(
+            Math.max(0, Math.floor(viewStart)), 
+            Math.min(raw.length, Math.floor(viewStart + visibleCount))
+        );
+
+        if (visible.length === 0) return;
+
+        const minP = Math.min(...visible.map(d => +d[3]));
+        const maxP = Math.max(...visible.map(d => +d[2]));
+        const pRange = (maxP - minP) || 1;
+
+        const getY = (p) => PAD_TOP + (1 - (p - minP) / pRange) * (chartH - PAD_TOP - 20);
+        const cW = chartW / visibleCount;
+
+        // 1. Izgara ve Fiyatlar
+        ctx.strokeStyle = '#2b2f36';
+        ctx.fillStyle = '#848e9c';
+        ctx.font = '11px sans-serif';
+        for (let i = 0; i <= 5; i++) {
+            const p = minP + (pRange * i / 5);
+            const y = getY(p);
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(chartW, y); ctx.stroke();
+            ctx.fillText(p.toFixed(2), chartW + 5, y + 4);
+        }
+
+        // 2. Mumlar
+        visible.forEach((d, i) => {
+            const x = i * cW + cW / 2;
+            const o = +d[1], h = +d[2], l = +d[3], c = +d[4];
+            const color = c >= o ? '#0ecb81' : '#f6465d';
+            ctx.strokeStyle = ctx.fillStyle = color;
+            ctx.beginPath(); ctx.moveTo(x, getY(h)); ctx.lineTo(x, getY(l)); ctx.stroke();
+            const bodyW = Math.max(0.5, cW * 0.8);
+            ctx.fillRect(x - bodyW / 2, getY(Math.max(o, c)), bodyW, Math.max(1, Math.abs(getY(o) - getY(c))));
+        });
+
+        // 3. Sinyaller (Hassas Eşleşme Düzeltildi)
+        signals.forEach(sig => {
+            const candleIdx = visible.findIndex(d => d[0] === sig.timestamp);
+
+            if (candleIdx !== -1) {
+                const x = candleIdx * cW + cW / 2;
+                const isBuy = sig.strength > 0;
+                const candleData = visible[candleIdx];
+                const yPos = isBuy ? getY(+candleData[3]) : getY(+candleData[2]);
+                const color = isBuy ? '#00ff88' : '#ff3355'; // Daha canlı neon renkler
+
+                ctx.save(); // Gölge efektinin diğer çizimleri bozmaması için sakla
+
+                // --- IŞIK (NEON) EFEKTİ ---
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = color;
+                ctx.fillStyle = color;
+
+                // Parlayan bir daire (Sinyal Lambası)
+                ctx.beginPath();
+                const circleY = isBuy ? yPos + 15 : yPos - 15;
+                ctx.arc(x, circleY, 5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // --- NEDEN YAZISI ---
+                ctx.shadowBlur = 0; // Yazı net olsun diye gölgeyi kapat
+                ctx.font = 'bold 11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                
+                // Nedenleri birleştirip yazalım (Örn: "RSI Dip + MACD")
+                const reasonText = sig.reasons.join(' + ');
+                const labelY = isBuy ? circleY + 15 : circleY - 10;
+
+                // Yazı arkasına hafif bir koyuluk (Okunabilirlik için)
+                const textWidth = ctx.measureText(reasonText).width;
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(x - (textWidth / 2) - 5, labelY - 10, textWidth + 10, 14);
+
+                // Yazıyı bas
+                ctx.fillStyle = color;
+                ctx.fillText(reasonText, x, labelY);
+
+                ctx.restore(); // Ayarları sıfırla
+            }
+        });
+
+        // 4. Crosshair
+        if (mouseX > 0 && mouseX < chartW) {
+            ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.beginPath(); ctx.moveTo(mouseX, 0); ctx.lineTo(mouseX, chartH); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, mouseY); ctx.lineTo(chartW, mouseY); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+    };
+
+    // --- İnteraktif Kontroller ---
+    canvas.onmousedown = e => {
+        isDragging = true; dragStartX = e.clientX; dragStartView = viewStart;
+    };
+    window.onmouseup = () => isDragging = false;
+    canvas.onmousemove = e => {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.clientX - rect.left; mouseY = e.clientY - rect.top;
+        if (isDragging) {
+            const deltaX = (dragStartX - e.clientX);
+            const moveRatio = deltaX / (canvas.width / visibleCount);
+            viewStart = Math.max(0, Math.min(raw.length - visibleCount, dragStartView + moveRatio));
+        }
+        draw();
+    };
+    canvas.onwheel = e => {
+        e.preventDefault();
+        const zoomSpeed = 0.15;
+        const delta = e.deltaY > 0 ? 1 : -1;
+        const oldVisibleCount = visibleCount;
+        visibleCount = Math.max(10, Math.min(raw.length, visibleCount * (1 + delta * zoomSpeed)));
+        viewStart += (oldVisibleCount - visibleCount) * (mouseX / canvas.width);
+        viewStart = Math.max(0, Math.min(raw.length - visibleCount, viewStart));
+        draw();
+    };
+
+    window.addEventListener('resize', () => { syncSize(); draw(); });
+    syncSize();
+    draw();
 }
 
 main()
