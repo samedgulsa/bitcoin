@@ -1,5 +1,6 @@
-async function main() {
-    const res = await fetch("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=15m&limit=1000");
+
+async function main(interval = "15m") {
+    const res = await fetch("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=" + interval + "&limit=1000");
     let raw = await res.json();
     raw.sort((a, b) => a[0] - b[0]);
     bbchart(raw)
@@ -8,6 +9,10 @@ async function main() {
     macdchart(raw)
     ma_ema_smaChart(raw)
 }
+
+document.querySelectorAll('.times button').forEach(btn => {
+  btn.addEventListener('click', () => main(btn.id));
+});
 // Ma-Ema-Sma chart yardımcı fonksiyon
 function calcSMA(data, p) {
     return data.map((_, i) => i < p - 1 ? null : data.slice(i - p + 1, i + 1).reduce((a, b) => a + b, 0) / p);
@@ -32,7 +37,8 @@ function ma_ema_smaChart(raw) {
     const sma7 = calcSMA(closes, 7).map((v, i) => ({ x: raw[i][0], y: v }));
     const ema25 = calcEMA(closes, 25).map((v, i) => ({ x: raw[i][0], y: v }));
     const ma50 = calcSMA(closes, 50).map((v, i) => ({ x: raw[i][0], y: v }));
-
+    const existing = Chart.getChart('ma_ema_smaChart'); // canvas id
+    if (existing) existing.destroy();
     new Chart(document.getElementById('ma_ema_smaChart'), {
         type: 'candlestick',
         data: {
@@ -122,7 +128,7 @@ function ma_ema_smaChart(raw) {
 }
 
 //Macd chart yardımcı fonksiyon
-function calcEMA(data, period) {
+function calcMACD(data, period) {
     const k = 2 / (period + 1);
     return data.reduce((ema, val, i) => {
         ema.push(i === 0 ? val : val * k + ema[i - 1] * (1 - k));
@@ -133,14 +139,15 @@ function calcEMA(data, period) {
 function macdchart(raw) {
     const prices = raw.map(d => parseFloat(d[4]));
     const labels = raw.map(d => new Date(d[0]).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }));
-    const ema12 = calcEMA(prices, 12);
-    const ema26 = calcEMA(prices, 26);
+    const ema12 = calcMACD(prices, 12);
+    const ema26 = calcMACD(prices, 26);
 
     // MACD Çizgisi: 12 EMA - 26 EMA
     const macd = ema12.map((v, i) => v - ema26[i]);
-    const signal = calcEMA(macd, 9);
+    const signal = calcMACD(macd, 9);
     const hist = macd.map((m, i) => m - signal[i]);
-
+    const existing = Chart.getChart('macdChart'); // canvas id
+    if (existing) existing.destroy();
     new Chart(document.getElementById('macdChart'), {
         type: 'bar',
         data: {
@@ -257,7 +264,8 @@ function rsichart(raw) {
     const labels = raw.map(d => new Date(d[0]).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }));
     const closes = raw.map(d => parseFloat(d[4]));
     const rsiData = calculateRSI(closes, 14);
-
+    const existing = Chart.getChart('rsiChart'); // canvas id
+    if (existing) existing.destroy();
     new Chart(document.getElementById('rsiChart').getContext('2d'), {
         type: 'line',
         data: {
@@ -322,6 +330,8 @@ function kdjchart(raw) {
     });
 
     const ctx = document.getElementById('kdjChart').getContext('2d');
+    const existing = Chart.getChart('kdjChart'); // canvas id
+    if (existing) existing.destroy();
     const chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -389,6 +399,8 @@ function bbchart(raw) {
         lower.push(sma - (stdDev * stdDevMult));
     }
     const ctx = document.getElementById('bbChart').getContext('2d');
+    const existing = Chart.getChart('bbChart'); // canvas id
+    if (existing) existing.destroy();
     new Chart(ctx, {
         type: 'line',
         data: {
