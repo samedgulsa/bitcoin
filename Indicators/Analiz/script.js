@@ -23,8 +23,7 @@ async function main(interval = "15m") {
     macdchart(raw, indicators.macd)
     ma_ema_smaChart(raw, indicators)
     const historySignals = scanHistory(raw, indicators);
-    renderAnalizPanel(historySignals);
-    mainChart(raw,historySignals)
+    mainChart(raw, historySignals)
 }
 
 document.querySelectorAll('.times button').forEach(btn => {
@@ -37,100 +36,63 @@ function scanHistory(raw, indicators) {
 
     // İlk 50 mumu indikatörlerin oturması için atlıyoruz
     for (let i = 50; i < closes.length; i++) {
-        let signalStrength = 0;
         let reasons = [];
 
         // 1. RSI Kontrolü
         const rsi = indicators.rsi[i];
-        if (rsi < 30) { signalStrength += 25; reasons.push("RSI Dip"); }
-        else if (rsi > 70) { signalStrength -= 25; reasons.push("RSI Tepe"); }
+        if (rsi < 30) { reasons.push("RSI Al Sinyali"); }
+        else if (rsi > 70) { reasons.push("RSI Sat Sinyali"); }
 
         // 2. MACD Kontrolü (Kesişim tespiti)
         const macd = indicators.macd.macdLine[i];
         const signal = indicators.macd.signalLine[i];
         const prevMacd = indicators.macd.macdLine[i - 1];
         const prevSignal = indicators.macd.signalLine[i - 1];
-        if (prevMacd < prevSignal && macd > signal) { signalStrength += 30; reasons.push("MACD Al Kesişimi"); }
-        else if (prevMacd > prevSignal && macd < signal) { signalStrength -= 30; reasons.push("MACD Sat Kesişimi"); }
+        if (prevMacd < prevSignal && macd > signal) { reasons.push("MACD Al Kesişimi"); }
+        else if (prevMacd > prevSignal && macd < signal) { reasons.push("MACD Sat Kesişimi"); }
 
         // 3. Bollinger Kontrolü
-        if (closes[i] <= indicators.bb.lower[i] && indicators.bb.lower[i] !== null) { signalStrength += 20; reasons.push("BB Alt Bant"); }
-        else if (closes[i] >= indicators.bb.upper[i] && indicators.bb.upper[i] !== null) { signalStrength -= 20; reasons.push("BB Üst Bant"); }
+        if (closes[i] <= indicators.bb.lower[i] && indicators.bb.lower[i] !== null) { reasons.push("BB Alt Bant"); }
+        else if (closes[i] >= indicators.bb.upper[i] && indicators.bb.upper[i] !== null) { reasons.push("BB Üst Bant"); }
 
         // 4. KDJ Kontrolü
         const kdj = indicators.kdj;
-        if (kdj.jValues[i - 1] < kdj.kValues[i - 1] && kdj.jValues[i] > kdj.kValues[i]) { signalStrength += 25; reasons.push("KDJ Pozitif"); }
 
-        // Güçlü bir sinyal yakalarsak (Eşik: 50 veya -50)
-        if (Math.abs(signalStrength) >= 50) {
-            // Sinyalden 10 mum sonraki fiyat değişimi (Başarı ölçümü)
-            const futureIdx = Math.min(i + 10, closes.length - 1);
-            const priceChange = ((closes[futureIdx] - closes[i]) / closes[i]) * 100;
+        // 1. Kesişim Kontrolü (J'nin K ve D'yi yukarı kesmesi)
+        const wasBelow = kdj.jValues[i - 1] < kdj.kValues[i - 1] && kdj.jValues[i - 1] < kdj.dValues[i - 1];
+        const isAbove = kdj.jValues[i] > kdj.kValues[i] && kdj.jValues[i] > kdj.dValues[i];
 
+        // 2. Bölge Kontrolü (Kesişimin 30 seviyesinin altında olması)
+        // Genelde J çizgisi çok hızlı olduğu için K veya D'nin 30'un altında olması baz alınır
+        const inOversoldZone = kdj.kValues[i] < 30 && kdj.dValues[i] < 30;
+
+        if (wasBelow && isAbove && inOversoldZone) {
+            reasons.push("KDJ Pozitif Kesişim (Aşırı Satım Bölgesi < 30)");
+        }
+
+        const wasAbove = kdj.jValues[i - 1] > kdj.kValues[i - 1] && kdj.jValues[i - 1] > kdj.dValues[i - 1];
+        const isBelow = kdj.jValues[i] < kdj.kValues[i] && kdj.jValues[i] < kdj.dValues[i];
+
+        // 2. Bölge Kontrolü (Kesişimin 70 veya 80 seviyesinin üstünde olması)
+        const inOverboughtZone = kdj.kValues[i] > 70 && kdj.dValues[i] > 70;
+
+        if (wasAbove && isBelow && inOverboughtZone) {
+            reasons.push("KDJ Negatif Kesişim (Aşırı Alım Bölgesi > 70)");
+        }
+
+        const isBuy = reasons.some(r => r.includes("Al"));
+        const isSell = reasons.some(r => r.includes("Sat") || r.includes("Negatif"));
+        if (reasons.length > 0) {
             results.push({
                 timestamp: raw[i][0], // Ham milisaniye verisi (Eşleşme için bu şart)
                 time: new Date(raw[i][0]).toLocaleString('tr-TR'),
-                price: closes[i],
-                strength: signalStrength,
+                direction: isBuy ? 'buy' : isSell ? 'sell' : null,
                 reasons: reasons,
-                outcome: priceChange, // + ise başarılı, - ise başarısız
-                isSuccess: signalStrength > 0 ? priceChange > 0 : priceChange < 0
             });
         }
+
     }
     return results;
-}
-
-function renderAnalizPanel(signals) {
-    const panel = document.querySelector('.analiz-panel');
-    const totalSignals = signals.length;
-    const successfulOnes = signals.filter(s => s.isSuccess).length;
-    const winRate = totalSignals > 0 ? ((successfulOnes / totalSignals) * 100).toFixed(1) : 0;
-
-    // En son sinyallerden 5 tanesini göster
-    const recentSignals = signals.slice(-5).reverse();
-
-    panel.innerHTML = `
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; border-bottom: 1px solid #2b2f36; padding-bottom: 15px;">
-            <div>
-                <h3 style="color: #848e9c; margin: 0;">Genel Strateji Başarısı</h3>
-                <div style="font-size: 24px; color: ${winRate > 50 ? '#0ecb81' : '#f6465d'}">%${winRate} Win Rate</div>
-                <small style="color: #5e6673">Toplam 1000 mumda ${totalSignals} çakışma bulundu.</small>
-            </div>
-            <div style="text-align: right;">
-                <h3 style="color: #848e9c; margin: 0;">Sinyal Yoğunluğu</h3>
-                <div style="font-size: 24px; color: #f0b90b">${(totalSignals / 10).toFixed(2)} / 100 Mum</div>
-            </div>
-        </div>
-
-        <div style="margin-top: 15px;">
-            <h4 style="color: #f0b90b; margin-bottom: 10px;">Son Tespit Edilen Fırsatlar (Debug Log)</h4>
-            <div style="overflow-y: auto; max-height: 250px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 12px; font-family: monospace;">
-                    <thead>
-                        <tr style="text-align: left; color: #848e9c; border-bottom: 1px solid #2b2f36;">
-                            <th style="padding: 8px;">Zaman</th>
-                            <th style="padding: 8px;">Fiyat</th>
-                            <th style="padding: 8px;">Nedenler</th>
-                            <th style="padding: 8px;">Sonuç (10 Mum)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${recentSignals.map(s => `
-                            <tr style="border-bottom: 1px solid #1e2329;">
-                                <td style="padding: 8px;">${s.time.split(' ')[1]}</td>
-                                <td style="padding: 8px;">${s.price.toFixed(2)}</td>
-                                <td style="padding: 8px; color: #f0b90b;">${s.reasons.join(' + ')}</td>
-                                <td style="padding: 8px; color: ${s.isSuccess ? '#0ecb81' : '#f6465d'}">
-                                    ${s.outcome > 0 ? '+' : ''}${s.outcome.toFixed(2)}% ${s.isSuccess ? '✅' : '❌'}
-                                </td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    `;
 }
 
 // Ma-Ema-Sma chart yardımcı fonksiyon
@@ -606,8 +568,8 @@ function mainChart(raw, signals = []) {
     const container = canvas.parentElement;
 
     // --- DEĞİŞİKLİK BURADA: İlk açılışta tüm veriyi göster ---
-    let visibleCount = raw.length; 
-    let viewStart = 0; 
+    let visibleCount = raw.length;
+    let viewStart = 0;
     // -------------------------------------------------------
 
     let isDragging = false;
@@ -628,7 +590,7 @@ function mainChart(raw, signals = []) {
         ctx.fillRect(0, 0, W, H);
 
         const visible = raw.slice(
-            Math.max(0, Math.floor(viewStart)), 
+            Math.max(0, Math.floor(viewStart)),
             Math.min(raw.length, Math.floor(viewStart + visibleCount))
         );
 
@@ -669,7 +631,7 @@ function mainChart(raw, signals = []) {
 
             if (candleIdx !== -1) {
                 const x = candleIdx * cW + cW / 2;
-                const isBuy = sig.strength > 0;
+                const isBuy = sig.direction === 'buy';
                 const candleData = visible[candleIdx];
                 const yPos = isBuy ? getY(+candleData[3]) : getY(+candleData[2]);
                 const color = isBuy ? '#00ff88' : '#ff3355'; // Daha canlı neon renkler
@@ -691,7 +653,7 @@ function mainChart(raw, signals = []) {
                 ctx.shadowBlur = 0; // Yazı net olsun diye gölgeyi kapat
                 ctx.font = 'bold 11px Inter, sans-serif';
                 ctx.textAlign = 'center';
-                
+
                 // Nedenleri birleştirip yazalım (Örn: "RSI Dip + MACD")
                 const reasonText = sig.reasons.join(' + ');
                 const labelY = isBuy ? circleY + 15 : circleY - 10;
