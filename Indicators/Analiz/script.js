@@ -48,12 +48,18 @@ function scanHistory(raw, indicators) {
         const signal = indicators.macd.signalLine[i];
         const prevMacd = indicators.macd.macdLine[i - 1];
         const prevSignal = indicators.macd.signalLine[i - 1];
-        if (prevMacd < prevSignal && macd > signal) { reasons.push("MACD Al Kesişimi"); }
+        if (prevMacd < prevSignal && macd > signal) {
+            if (macd < 0) {
+                reasons.push("MACD Al Kesişimi (Güçlü)");
+            } else {
+                reasons.push("MACD Al Kesişimi (Zayıf)");
+            }
+        }
         else if (prevMacd > prevSignal && macd < signal) { reasons.push("MACD Sat Kesişimi"); }
 
         // 3. Bollinger Kontrolü
-        if (closes[i] <= indicators.bb.lower[i] && indicators.bb.lower[i] !== null) { reasons.push("BB Alt Bant"); }
-        else if (closes[i] >= indicators.bb.upper[i] && indicators.bb.upper[i] !== null) { reasons.push("BB Üst Bant"); }
+        if (closes[i] <= indicators.bb.lower[i] && indicators.bb.lower[i] !== null) { reasons.push("BB Al Sinyali"); }
+        else if (closes[i] >= indicators.bb.upper[i] && indicators.bb.upper[i] !== null) { reasons.push("BB Sat Sinyali"); }
 
         // 4. KDJ Kontrolü
         const kdj = indicators.kdj;
@@ -67,7 +73,7 @@ function scanHistory(raw, indicators) {
         const inOversoldZone = kdj.kValues[i] < 30 && kdj.dValues[i] < 30;
 
         if (wasBelow && isAbove && inOversoldZone) {
-            reasons.push("KDJ Pozitif Kesişim (Aşırı Satım Bölgesi < 30)");
+            reasons.push("KDJ Al Sinyali");
         }
 
         const wasAbove = kdj.jValues[i - 1] > kdj.kValues[i - 1] && kdj.jValues[i - 1] > kdj.dValues[i - 1];
@@ -77,7 +83,7 @@ function scanHistory(raw, indicators) {
         const inOverboughtZone = kdj.kValues[i] > 70 && kdj.dValues[i] > 70;
 
         if (wasAbove && isBelow && inOverboughtZone) {
-            reasons.push("KDJ Negatif Kesişim (Aşırı Alım Bölgesi > 70)");
+            reasons.push("KDJ Sat Sinyali");
         }
 
         const isBuy = reasons.some(r => r.includes("Al"));
