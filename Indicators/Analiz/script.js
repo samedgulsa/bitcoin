@@ -35,7 +35,6 @@ document.querySelectorAll('.times button').forEach(btn => {
 function scanHistory(raw, indicators) {
     const closes = raw.map(d => parseFloat(d[4]));
 
-    // Her indikatör kendi pozisyonunu bağımsız takip eder
     const indicatorConfigs = [
         {
             name: "RSI",
@@ -97,40 +96,38 @@ function scanHistory(raw, indicators) {
 
     for (const config of indicatorConfigs) {
         const trades = [];
-        let position = null; // { entryPrice, entryIndex, entryTime }
+        let position = null;
 
         for (let i = 51; i < closes.length; i++) {
             const signal = config.getSignal(i);
             const price = closes[i];
 
             if (!position && signal === 'buy') {
-                // Pozisyon yok → gir
                 position = {
                     entryPrice: price,
                     entryIndex: i,
                     entryTime: new Date(raw[i][0]).toLocaleString('tr-TR')
                 };
             } else if (position && signal === 'sell') {
-                // Pozisyon var → çık
                 const pnl = ((price - position.entryPrice) / position.entryPrice) * 100;
                 const duration = i - position.entryIndex;
 
                 trades.push({
                     entryTime: position.entryTime,
                     exitTime: new Date(raw[i][0]).toLocaleString('tr-TR'),
+                    entryIndex: position.entryIndex,  // <-- YENİ
+                    exitIndex: i,                     // <-- YENİ
                     entryPrice: position.entryPrice,
                     exitPrice: price,
                     pnl: parseFloat(pnl.toFixed(3)),
-                    duration, // mum sayısı
+                    duration,
                     isSuccess: pnl > 0
                 });
 
                 position = null;
             }
-            // Pozisyon varken tekrar al → yok say (seçenek 1)
         }
 
-        // İstatistikler
         const total = trades.length;
         const wins = trades.filter(t => t.isSuccess).length;
         const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
@@ -139,8 +136,15 @@ function scanHistory(raw, indicators) {
             ? trades.reduce((sum, t) => sum + t.duration, 0) / total
             : 0;
 
+        // <-- YENİ: Grafikte kullanılacak sinyalleri üret
+        const signals = trades.flatMap(t => [
+            { timestamp: raw[t.entryIndex][0], direction: 'buy', reasons: [config.name] },
+            { timestamp: raw[t.exitIndex][0], direction: 'sell', reasons: [config.name] }
+        ]);
+
         allResults[config.name] = {
             trades,
+            signals,  // <-- YENİ
             stats: {
                 total,
                 wins,
@@ -166,7 +170,7 @@ function renderAnalizPanel(allResults) {
         const wrColor  = s.winRate >= 50 ? '#0ecb81' : '#f6465d';
 
         return `
-            <tr style="border-bottom: 1px solid #1e2329;">
+            <tr class="indicator-row" data-indicator="${name}" style="border-bottom: 1px solid #1e2329; cursor: pointer; transition: background 0.2s;">
                 <td style="padding: 8px; color: #eaecef;">${name}</td>
                 <td style="padding: 8px; text-align: center; color: #f0b90b;">${s.total}</td>
                 <td style="padding: 8px; text-align: center; color: ${wrColor};">%${s.winRate}</td>
@@ -180,9 +184,13 @@ function renderAnalizPanel(allResults) {
     }).join('');
 
     panel.innerHTML = `
+        <style>
+            .indicator-row:hover { background: #2b2f36 !important; }
+            .indicator-row.active { background: #1e2329 !important; border-left: 3px solid #f0b90b; }
+        </style>
         <div style="font-family: monospace; color: #eaecef;">
             <div style="padding: 12px 15px; border-bottom: 1px solid #2b2f36; font-size: 13px; color: #848e9c; letter-spacing: 1px;">
-                İNDİKATÖR BAZINDA BACKTEST
+                İNDİKATÖR BAZINDA BACKTEST — Tıkla ve grafikte gör
             </div>
             <div style="overflow-x: auto;">
                 <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
@@ -203,7 +211,25 @@ function renderAnalizPanel(allResults) {
             </div>
         </div>
     `;
+
+    // <-- YENİ: Tıklama olayları
+    panel.querySelectorAll('.indicator-row').forEach(row => {
+        row.addEventListener('click', () => {
+            panel.querySelectorAll('.indicator-row').forEach(r => r.classList.remove('active'));
+            row.classList.add('active');
+
+            const indicatorName = row.getAttribute('data-indicator');
+            const indicatorData = allResults[indicatorName];
+            const canvas = document.getElementById("mainChart");
+
+            if (canvas && canvas.updateSignals) {
+                canvas.updateSignals(indicatorData.signals);
+            }
+        });
+    });
 }
+
+
 
 // Atr hesaplama
 function getATR(raw, period) {
@@ -703,15 +729,16 @@ function bbchart(raw, bbData) {
     });
 }
 
-function mainChart(raw, signals = []) {
+function mainChart(raw, initialSignals = []) {
     const canvas = document.getElementById("mainChart");
     const ctx = canvas.getContext('2d');
     const container = canvas.parentElement;
 
-    // --- DEĞİŞİKLİK BURADA: İlk açılışta tüm veriyi göster ---
+    // <-- YENİ: Sinyalleri canvas üzerinde sakla, dışarıdan güncellenebilsin
+    canvas.signals = initialSignals;
+
     let visibleCount = raw.length;
     let viewStart = 0;
-    // -------------------------------------------------------
 
     let isDragging = false;
     let dragStartX = 0, dragStartView = 0;
@@ -767,6 +794,7 @@ function mainChart(raw, signals = []) {
         });
 
         // 3. Sinyaller (Hassas Eşleşme Düzeltildi)
+        const signals = canvas.signals || [];  // <-- YENİ: canvas.signals'dan oku
         signals.forEach(sig => {
             const candleIdx = visible.findIndex(d => d[0] === sig.timestamp);
 
@@ -775,40 +803,34 @@ function mainChart(raw, signals = []) {
                 const isBuy = sig.direction === 'buy';
                 const candleData = visible[candleIdx];
                 const yPos = isBuy ? getY(+candleData[3]) : getY(+candleData[2]);
-                const color = isBuy ? '#00ff88' : '#ff3355'; // Daha canlı neon renkler
+                const color = isBuy ? '#00ff88' : '#ff3355';
 
-                ctx.save(); // Gölge efektinin diğer çizimleri bozmaması için sakla
+                ctx.save();
 
-                // --- IŞIK (NEON) EFEKTİ ---
                 ctx.shadowBlur = 15;
                 ctx.shadowColor = color;
                 ctx.fillStyle = color;
 
-                // Parlayan bir daire (Sinyal Lambası)
                 ctx.beginPath();
                 const circleY = isBuy ? yPos + 15 : yPos - 15;
                 ctx.arc(x, circleY, 5, 0, Math.PI * 2);
                 ctx.fill();
 
-                // --- NEDEN YAZISI ---
-                ctx.shadowBlur = 0; // Yazı net olsun diye gölgeyi kapat
+                ctx.shadowBlur = 0;
                 ctx.font = 'bold 11px Inter, sans-serif';
                 ctx.textAlign = 'center';
 
-                // Nedenleri birleştirip yazalım (Örn: "RSI Dip + MACD")
                 const reasonText = sig.reasons.join(' + ');
                 const labelY = isBuy ? circleY + 15 : circleY - 10;
 
-                // Yazı arkasına hafif bir koyuluk (Okunabilirlik için)
                 const textWidth = ctx.measureText(reasonText).width;
                 ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
                 ctx.fillRect(x - (textWidth / 2) - 5, labelY - 10, textWidth + 10, 14);
 
-                // Yazıyı bas
                 ctx.fillStyle = color;
                 ctx.fillText(reasonText, x, labelY);
 
-                ctx.restore(); // Ayarları sıfırla
+                ctx.restore();
             }
         });
 
@@ -821,7 +843,6 @@ function mainChart(raw, signals = []) {
         }
     };
 
-    // --- İnteraktif Kontroller ---
     canvas.onmousedown = e => {
         isDragging = true; dragStartX = e.clientX; dragStartView = viewStart;
     };
@@ -847,7 +868,17 @@ function mainChart(raw, signals = []) {
         draw();
     };
 
-    window.addEventListener('resize', () => { syncSize(); draw(); });
+    const resizeHandler = () => { syncSize(); draw(); };
+    if (canvas.resizeHandler) window.removeEventListener('resize', canvas.resizeHandler);
+    canvas.resizeHandler = resizeHandler;
+    window.addEventListener('resize', resizeHandler);
+
+    // <-- YENİ: Dışarıdan sinyal güncelleme fonksiyonu
+    canvas.updateSignals = (newSignals) => {
+        canvas.signals = newSignals;
+        draw();
+    };
+
     syncSize();
     draw();
 }
