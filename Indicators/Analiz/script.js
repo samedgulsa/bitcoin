@@ -15,7 +15,8 @@ async function main(interval = "15m") {
         macd: getMACDData(closes),
         rsi: getRSIData(closes, 14),
         kdj: getKDJData(raw, 9),
-        bb: getBBData(closes, 20, 2)
+        bb: getBBData(closes, 20, 2),
+        atr: getATR(raw, 14)
     };
     bbchart(raw, indicators.bb)
     kdjchart(raw, indicators.kdj)
@@ -23,6 +24,7 @@ async function main(interval = "15m") {
     macdchart(raw, indicators.macd)
     ma_ema_smaChart(raw, indicators)
     const historySignals = scanHistory(raw, indicators);
+    renderAnalizPanel(historySignals);  // ← buraya
     mainChart(raw, historySignals)
 }
 
@@ -32,73 +34,206 @@ document.querySelectorAll('.times button').forEach(btn => {
 
 function scanHistory(raw, indicators) {
     const closes = raw.map(d => parseFloat(d[4]));
-    const results = [];
 
-    // İlk 50 mumu indikatörlerin oturması için atlıyoruz
-    for (let i = 50; i < closes.length; i++) {
-        let reasons = [];
-
-        // 1. RSI Kontrolü
-        const rsi = indicators.rsi[i];
-        if (rsi < 30) { reasons.push("RSI Al Sinyali"); }
-        else if (rsi > 70) { reasons.push("RSI Sat Sinyali"); }
-
-        // 2. MACD Kontrolü (Kesişim tespiti)
-        const macd = indicators.macd.macdLine[i];
-        const signal = indicators.macd.signalLine[i];
-        const prevMacd = indicators.macd.macdLine[i - 1];
-        const prevSignal = indicators.macd.signalLine[i - 1];
-        if (prevMacd < prevSignal && macd > signal) {
-            if (macd < 0) {
-                reasons.push("MACD Al Kesişimi (Güçlü)");
-            } else {
-                reasons.push("MACD Al Kesişimi (Zayıf)");
+    // Her indikatör kendi pozisyonunu bağımsız takip eder
+    const indicatorConfigs = [
+        {
+            name: "RSI",
+            getSignal: (i) => {
+                const rsi = indicators.rsi[i];
+                if (rsi < 30) return 'buy';
+                if (rsi > 70) return 'sell';
+                return null;
+            }
+        },
+        {
+            name: "MACD (Güçlü)",
+            getSignal: (i) => {
+                const macd = indicators.macd.macdLine[i];
+                const signal = indicators.macd.signalLine[i];
+                const prevMacd = indicators.macd.macdLine[i - 1];
+                const prevSignal = indicators.macd.signalLine[i - 1];
+                if (prevMacd < prevSignal && macd > signal && macd < 0) return 'buy';
+                if (prevMacd > prevSignal && macd < signal && macd > 0) return 'sell';
+                return null;
+            }
+        },
+        {
+            name: "MACD (Zayıf)",
+            getSignal: (i) => {
+                const macd = indicators.macd.macdLine[i];
+                const signal = indicators.macd.signalLine[i];
+                const prevMacd = indicators.macd.macdLine[i - 1];
+                const prevSignal = indicators.macd.signalLine[i - 1];
+                if (prevMacd < prevSignal && macd > signal && macd >= 0) return 'buy';
+                if (prevMacd > prevSignal && macd < signal && macd <= 0) return 'sell';
+                return null;
+            }
+        },
+        {
+            name: "Bollinger Bands",
+            getSignal: (i) => {
+                if (closes[i] <= indicators.bb.lower[i] && indicators.bb.lower[i] !== null) return 'buy';
+                if (closes[i] >= indicators.bb.upper[i] && indicators.bb.upper[i] !== null) return 'sell';
+                return null;
+            }
+        },
+        {
+            name: "KDJ",
+            getSignal: (i) => {
+                const kdj = indicators.kdj;
+                const wasBelow = kdj.jValues[i-1] < kdj.kValues[i-1] && kdj.jValues[i-1] < kdj.dValues[i-1];
+                const isAbove  = kdj.jValues[i]   > kdj.kValues[i]   && kdj.jValues[i]   > kdj.dValues[i];
+                const wasAbove = kdj.jValues[i-1] > kdj.kValues[i-1] && kdj.jValues[i-1] > kdj.dValues[i-1];
+                const isBelow  = kdj.jValues[i]   < kdj.kValues[i]   && kdj.jValues[i]   < kdj.dValues[i];
+                if (wasBelow && isAbove && kdj.kValues[i] < 30 && kdj.dValues[i] < 30) return 'buy';
+                if (wasAbove && isBelow && kdj.kValues[i] > 70 && kdj.dValues[i] > 70) return 'sell';
+                return null;
             }
         }
-        else if (prevMacd > prevSignal && macd < signal) { reasons.push("MACD Sat Kesişimi"); }
+    ];
 
-        // 3. Bollinger Kontrolü
-        if (closes[i] <= indicators.bb.lower[i] && indicators.bb.lower[i] !== null) { reasons.push("BB Al Sinyali"); }
-        else if (closes[i] >= indicators.bb.upper[i] && indicators.bb.upper[i] !== null) { reasons.push("BB Sat Sinyali"); }
+    const allResults = {};
 
-        // 4. KDJ Kontrolü
-        const kdj = indicators.kdj;
+    for (const config of indicatorConfigs) {
+        const trades = [];
+        let position = null; // { entryPrice, entryIndex, entryTime }
 
-        // 1. Kesişim Kontrolü (J'nin K ve D'yi yukarı kesmesi)
-        const wasBelow = kdj.jValues[i - 1] < kdj.kValues[i - 1] && kdj.jValues[i - 1] < kdj.dValues[i - 1];
-        const isAbove = kdj.jValues[i] > kdj.kValues[i] && kdj.jValues[i] > kdj.dValues[i];
+        for (let i = 51; i < closes.length; i++) {
+            const signal = config.getSignal(i);
+            const price = closes[i];
 
-        // 2. Bölge Kontrolü (Kesişimin 30 seviyesinin altında olması)
-        // Genelde J çizgisi çok hızlı olduğu için K veya D'nin 30'un altında olması baz alınır
-        const inOversoldZone = kdj.kValues[i] < 30 && kdj.dValues[i] < 30;
+            if (!position && signal === 'buy') {
+                // Pozisyon yok → gir
+                position = {
+                    entryPrice: price,
+                    entryIndex: i,
+                    entryTime: new Date(raw[i][0]).toLocaleString('tr-TR')
+                };
+            } else if (position && signal === 'sell') {
+                // Pozisyon var → çık
+                const pnl = ((price - position.entryPrice) / position.entryPrice) * 100;
+                const duration = i - position.entryIndex;
 
-        if (wasBelow && isAbove && inOversoldZone) {
-            reasons.push("KDJ Al Sinyali");
+                trades.push({
+                    entryTime: position.entryTime,
+                    exitTime: new Date(raw[i][0]).toLocaleString('tr-TR'),
+                    entryPrice: position.entryPrice,
+                    exitPrice: price,
+                    pnl: parseFloat(pnl.toFixed(3)),
+                    duration, // mum sayısı
+                    isSuccess: pnl > 0
+                });
+
+                position = null;
+            }
+            // Pozisyon varken tekrar al → yok say (seçenek 1)
         }
 
-        const wasAbove = kdj.jValues[i - 1] > kdj.kValues[i - 1] && kdj.jValues[i - 1] > kdj.dValues[i - 1];
-        const isBelow = kdj.jValues[i] < kdj.kValues[i] && kdj.jValues[i] < kdj.dValues[i];
+        // İstatistikler
+        const total = trades.length;
+        const wins = trades.filter(t => t.isSuccess).length;
+        const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+        const avgPnl = total > 0 ? totalPnl / total : 0;
+        const avgDuration = total > 0
+            ? trades.reduce((sum, t) => sum + t.duration, 0) / total
+            : 0;
 
-        // 2. Bölge Kontrolü (Kesişimin 70 veya 80 seviyesinin üstünde olması)
-        const inOverboughtZone = kdj.kValues[i] > 70 && kdj.dValues[i] > 70;
-
-        if (wasAbove && isBelow && inOverboughtZone) {
-            reasons.push("KDJ Sat Sinyali");
-        }
-
-        const isBuy = reasons.some(r => r.includes("Al"));
-        const isSell = reasons.some(r => r.includes("Sat") || r.includes("Negatif"));
-        if (reasons.length > 0) {
-            results.push({
-                timestamp: raw[i][0], // Ham milisaniye verisi (Eşleşme için bu şart)
-                time: new Date(raw[i][0]).toLocaleString('tr-TR'),
-                direction: isBuy ? 'buy' : isSell ? 'sell' : null,
-                reasons: reasons,
-            });
-        }
-
+        allResults[config.name] = {
+            trades,
+            stats: {
+                total,
+                wins,
+                losses: total - wins,
+                winRate: total > 0 ? parseFloat(((wins / total) * 100).toFixed(1)) : 0,
+                totalPnl: parseFloat(totalPnl.toFixed(2)),
+                avgPnl: parseFloat(avgPnl.toFixed(3)),
+                avgDuration: parseFloat(avgDuration.toFixed(1))
+            }
+        };
     }
-    return results;
+
+    return allResults;
+}
+
+function renderAnalizPanel(allResults) {
+    const panel = document.querySelector('.analiz-panel');
+
+    const rows = Object.entries(allResults).map(([name, data]) => {
+        const s = data.stats;
+        const pnlColor = s.totalPnl >= 0 ? '#0ecb81' : '#f6465d';
+        const avgColor = s.avgPnl >= 0 ? '#0ecb81' : '#f6465d';
+        const wrColor  = s.winRate >= 50 ? '#0ecb81' : '#f6465d';
+
+        return `
+            <tr style="border-bottom: 1px solid #1e2329;">
+                <td style="padding: 8px; color: #eaecef;">${name}</td>
+                <td style="padding: 8px; text-align: center; color: #f0b90b;">${s.total}</td>
+                <td style="padding: 8px; text-align: center; color: ${wrColor};">%${s.winRate}</td>
+                <td style="padding: 8px; text-align: center; color: #0ecb81;">${s.wins}</td>
+                <td style="padding: 8px; text-align: center; color: #f6465d;">${s.losses}</td>
+                <td style="padding: 8px; text-align: center; color: ${pnlColor};">${s.totalPnl >= 0 ? '+' : ''}${s.totalPnl}%</td>
+                <td style="padding: 8px; text-align: center; color: ${avgColor};">${s.avgPnl >= 0 ? '+' : ''}${s.avgPnl}%</td>
+                <td style="padding: 8px; text-align: center; color: #848e9c;">${s.avgDuration} mum</td>
+            </tr>
+        `;
+    }).join('');
+
+    panel.innerHTML = `
+        <div style="font-family: monospace; color: #eaecef;">
+            <div style="padding: 12px 15px; border-bottom: 1px solid #2b2f36; font-size: 13px; color: #848e9c; letter-spacing: 1px;">
+                İNDİKATÖR BAZINDA BACKTEST
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                    <thead>
+                        <tr style="color: #848e9c; border-bottom: 1px solid #2b2f36;">
+                            <th style="padding: 8px; text-align: left;">İndikatör</th>
+                            <th style="padding: 8px; text-align: center;">İşlem</th>
+                            <th style="padding: 8px; text-align: center;">Win %</th>
+                            <th style="padding: 8px; text-align: center;">Kazanan</th>
+                            <th style="padding: 8px; text-align: center;">Kaybeden</th>
+                            <th style="padding: 8px; text-align: center;">Toplam PnL</th>
+                            <th style="padding: 8px; text-align: center;">Ort. PnL</th>
+                            <th style="padding: 8px; text-align: center;">Ort. Süre</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+// Atr hesaplama
+function getATR(raw, period) {
+    const trValues = [];
+
+    for (let i = 0; i < raw.length; i++) {
+        const high = parseFloat(raw[i][2]);
+        const low = parseFloat(raw[i][3]);
+        const prevClose = i === 0 ? parseFloat(raw[i][4]) : parseFloat(raw[i - 1][4]);
+
+        const tr = Math.max(
+            high - low,
+            Math.abs(high - prevClose),
+            Math.abs(low - prevClose)
+        );
+        trValues.push(tr);
+    }
+
+    const atrValues = new Array(raw.length).fill(null);
+
+    // İlk ATR = ilk 14 TR'nin ortalaması
+    let sum = trValues.slice(0, period).reduce((a, b) => a + b, 0);
+    atrValues[period - 1] = sum / period;
+
+    // Wilder's smoothing
+    for (let i = period; i < raw.length; i++) {
+        atrValues[i] = (atrValues[i - 1] * (period - 1) + trValues[i]) / period;
+    }
+
+    return atrValues;
 }
 
 // Ma-Ema-Sma chart yardımcı fonksiyon
