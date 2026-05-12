@@ -115,8 +115,8 @@ function scanHistory(raw, indicators) {
                 trades.push({
                     entryTime: position.entryTime,
                     exitTime: new Date(raw[i][0]).toLocaleString('tr-TR'),
-                    entryIndex: position.entryIndex,  // <-- YENİ
-                    exitIndex: i,                     // <-- YENİ
+                    entryIndex: position.entryIndex,
+                    exitIndex: i,
                     entryPrice: position.entryPrice,
                     exitPrice: price,
                     pnl: parseFloat(pnl.toFixed(3)),
@@ -136,15 +136,24 @@ function scanHistory(raw, indicators) {
             ? trades.reduce((sum, t) => sum + t.duration, 0) / total
             : 0;
 
-        // <-- YENİ: Grafikte kullanılacak sinyalleri üret
-        const signals = trades.flatMap(t => [
-            { timestamp: raw[t.entryIndex][0], direction: 'buy', reasons: [config.name] },
-            { timestamp: raw[t.exitIndex][0], direction: 'sell', reasons: [config.name] }
-        ]);
+        const tradesForChart = trades.map((t, idx) => ({
+            id: idx + 1,
+            entryTimestamp: raw[t.entryIndex][0],
+            exitTimestamp: raw[t.exitIndex][0],
+            entryPrice: t.entryPrice,
+            exitPrice: t.exitPrice,
+            entryIndex: t.entryIndex,
+            exitIndex: t.exitIndex,
+            pnl: t.pnl,
+            duration: t.duration,
+            isSuccess: t.isSuccess,
+            entryTime: t.entryTime,
+            exitTime: t.exitTime
+        }));
 
         allResults[config.name] = {
             trades,
-            signals,  // <-- YENİ
+            tradesForChart,
             stats: {
                 total,
                 wins,
@@ -158,6 +167,251 @@ function scanHistory(raw, indicators) {
     }
 
     return allResults;
+}
+// ============================================
+// DEMO PANEL - KALDIRAÇLI İŞLEM SİMÜLASYONU
+// ============================================
+function calculateDemo(trades, initialBalance, leverage) {
+    const liqThreshold = 100 / leverage;
+    let balance = initialBalance;
+    let maxBalance = balance;
+    let minBalance = balance;
+    let firstLiquidationTrade = null;
+    let totalWins = 0;
+    let totalLosses = 0;
+    let totalLiquidations = 0;
+
+    const results = trades.map((trade, idx) => {
+        const leveragedPnl = trade.pnl * leverage;
+        const isLiquidated = trade.pnl < 0 && Math.abs(trade.pnl) >= liqThreshold;
+
+        let tradeResult, endBalance, pnlDisplay;
+
+        if (isLiquidated) {
+            tradeResult = 'liquidated';
+            endBalance = 0;
+            pnlDisplay = -100;
+            totalLiquidations++;
+            if (!firstLiquidationTrade) firstLiquidationTrade = idx + 1;
+        } else {
+            const multiplier = 1 + (leveragedPnl / 100);
+            endBalance = balance * multiplier;
+            pnlDisplay = leveragedPnl;
+            if (leveragedPnl > 0) totalWins++;
+            else if (leveragedPnl < 0) totalLosses++;
+            tradeResult = leveragedPnl >= 0 ? 'win' : 'loss';
+        }
+
+        const row = {
+            id: idx + 1,
+            entryPrice: trade.entryPrice,
+            exitPrice: trade.exitPrice,
+            entryTime: trade.entryTime,
+            exitTime: trade.exitTime,
+            realPnl: trade.pnl,
+            leveragedPnl: pnlDisplay,
+            startBalance: balance,
+            endBalance: endBalance,
+            result: tradeResult,
+            isLiquidated: isLiquidated,
+            duration: trade.duration
+        };
+
+        balance = endBalance;
+        if (balance > maxBalance) maxBalance = balance;
+        if (balance < minBalance) minBalance = balance;
+
+        return row;
+    });
+
+    const totalChange = initialBalance > 0 ? ((balance - initialBalance) / initialBalance) * 100 : -100;
+    const maxDrawdown = initialBalance > 0 ? ((minBalance - initialBalance) / initialBalance) * 100 : -100;
+
+    return {
+        rows: results,
+        summary: {
+            initialBalance,
+            finalBalance: balance,
+            totalChange,
+            maxBalance,
+            minBalance,
+            maxDrawdown,
+            totalWins,
+            totalLosses,
+            totalLiquidations,
+            firstLiquidationTrade,
+            totalTrades: trades.length
+        }
+    };
+}
+
+function renderDemoPanel(trades, indicatorName) {
+    const panel = document.querySelector('.demo-panel');
+    if (!panel) return;
+
+    const leverageOptions = [1, 5, 10, 25, 50, 100];
+    let selectedLeverage = 10;
+    let userBalance = 1000;
+
+    const runCalculation = () => {
+        const data = calculateDemo(trades, userBalance, selectedLeverage);
+        updateUI(data);
+    };
+
+    const updateUI = (data) => {
+        const s = data.summary;
+        const rows = data.rows;
+
+        const finalColor = s.finalBalance >= s.initialBalance ? '#0ecb81' : '#f6465d';
+        const changeColor = s.totalChange >= 0 ? '#0ecb81' : '#f6465d';
+        const liqColor = s.totalLiquidations > 0 ? '#f6465d' : '#848e9c';
+
+        const liqInfo = s.firstLiquidationTrade
+            ? `<span style="color:#f6465d; font-weight:bold;">İlk likidasyon: #${s.firstLiquidationTrade}. işlemde</span>`
+            : `<span style="color:#0ecb81;">Likidasyon olmadı</span>`;
+
+        const tableRows = rows.map(r => {
+            const pnlColor = r.leveragedPnl >= 0 ? '#0ecb81' : '#f6465d';
+            const resultIcon = r.isLiquidated ? '🔥' : (r.leveragedPnl >= 0 ? '✅' : '❌');
+            const resultText = r.isLiquidated ? 'LİKİT' : (r.leveragedPnl >= 0 ? 'Kazanç' : 'Kayıp');
+            const resultColor = r.isLiquidated ? '#f6465d' : pnlColor;
+
+            return `
+                <tr style="border-bottom: 1px solid #1e2329; font-size: 11px;">
+                    <td style="padding: 6px 8px; color: #848e9c;">#${r.id}</td>
+                    <td style="padding: 6px 8px; color: #eaecef;">${r.entryPrice.toFixed(2)}</td>
+                    <td style="padding: 6px 8px; color: #eaecef;">${r.exitPrice.toFixed(2)}</td>
+                    <td style="padding: 6px 8px; color: ${r.realPnl >= 0 ? '#0ecb81' : '#f6465d'};">${r.realPnl > 0 ? '+' : ''}${r.realPnl}%</td>
+                    <td style="padding: 6px 8px; color: ${pnlColor}; font-weight: bold;">${r.leveragedPnl > 0 ? '+' : ''}${r.leveragedPnl.toFixed(1)}%</td>
+                    <td style="padding: 6px 8px; color: #eaecef;">${r.startBalance.toFixed(2)}</td>
+                    <td style="padding: 6px 8px; color: ${r.endBalance >= r.startBalance ? '#0ecb81' : '#f6465d'};">${r.endBalance.toFixed(2)}</td>
+                    <td style="padding: 6px 8px; color: ${resultColor}; font-weight: bold;">${resultIcon} ${resultText}</td>
+                </tr>
+            `;
+        }).join('');
+
+        panel.innerHTML = `
+            <style>
+                .demo-panel { font-family: monospace; color: #eaecef; background: #181a20; border-top: 1px solid #2b2f36; }
+                .demo-header { padding: 12px 15px; border-bottom: 1px solid #2b2f36; font-size: 13px; color: #f0b90b; letter-spacing: 1px; display: flex; justify-content: space-between; align-items: center; }
+                .demo-controls { padding: 12px 15px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #2b2f36; }
+                .demo-control-group { display: flex; flex-direction: column; gap: 4px; }
+                .demo-control-group label { font-size: 10px; color: #848e9c; text-transform: uppercase; letter-spacing: 1px; }
+                .demo-input { background: #1e2329; border: 1px solid #2b2f36; color: #eaecef; padding: 6px 10px; font-family: monospace; font-size: 12px; border-radius: 4px; width: 120px; outline: none; }
+                .demo-input:focus { border-color: #f0b90b; }
+                .lev-btn { background: #1e2329; border: 1px solid #2b2f36; color: #848e9c; padding: 5px 12px; font-family: monospace; font-size: 11px; cursor: pointer; border-radius: 4px; transition: all 0.15s; }
+                .lev-btn:hover { border-color: #848e9c; color: #eaecef; }
+                .lev-btn.active { background: #f0b90b; border-color: #f0b90b; color: #181a20; font-weight: bold; }
+                .demo-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; padding: 12px 15px; border-bottom: 1px solid #2b2f36; }
+                .stat-card { background: #1e2329; border: 1px solid #2b2f36; border-radius: 6px; padding: 10px; text-align: center; }
+                .stat-label { font-size: 10px; color: #848e9c; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+                .stat-value { font-size: 16px; font-weight: bold; }
+                .demo-table-wrap { overflow-x: auto; max-height: 300px; overflow-y: auto; }
+                .demo-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+                .demo-table th { position: sticky; top: 0; background: #181a20; padding: 8px; color: #848e9c; border-bottom: 1px solid #2b2f36; text-align: left; font-weight: normal; }
+                .demo-liq-banner { padding: 8px 15px; background: rgba(246, 70, 93, 0.08); border-bottom: 1px solid #2b2f36; font-size: 12px; text-align: center; }
+            </style>
+
+            <div class="demo-header">
+                <span>🎰 KALDIRAÇLI DEMO — ${indicatorName}</span>
+                <span style="font-size:11px; color:#848e9c;">Compound (Bileşik) Hesaplama</span>
+            </div>
+
+            <div class="demo-controls">
+                <div class="demo-control-group">
+                    <label>Başlangıç Bakiyesi (TL)</label>
+                    <input type="number" class="demo-input" id="demoBalance" value="${userBalance}" min="1" step="10">
+                </div>
+                <div class="demo-control-group">
+                    <label>Kaldıraç</label>
+                    <div style="display:flex; gap:4px;" id="levButtons">
+                        ${leverageOptions.map(lev => `
+                            <button class="lev-btn ${lev === selectedLeverage ? 'active' : ''}" data-lev="${lev}">${lev}x</button>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="demo-control-group">
+                    <label>Likit Eşiği</label>
+                    <div style="color:#f6465d; font-size:12px; font-weight:bold;">%${(100/selectedLeverage).toFixed(2)}</div>
+                    <div style="color:#5e6673; font-size:10px;">Fiyat bu kadar ters giderse</div>
+                </div>
+            </div>
+
+            ${s.totalLiquidations > 0 ? `<div class="demo-liq-banner">${liqInfo}</div>` : ''}
+
+            <div class="demo-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Final Bakiye</div>
+                    <div class="stat-value" style="color:${finalColor};">${s.finalBalance.toFixed(2)} TL</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Net Değişim</div>
+                    <div class="stat-value" style="color:${changeColor};">${s.totalChange >= 0 ? '+' : ''}${s.totalChange.toFixed(2)}%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">En Yüksek Bakiye</div>
+                    <div class="stat-value" style="color:#0ecb81;">${s.maxBalance.toFixed(2)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">En Düşük Bakiye</div>
+                    <div class="stat-value" style="color:${s.minBalance <= 0 ? '#f6465d' : '#eaecef'};">${s.minBalance.toFixed(2)}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Kazanan</div>
+                    <div class="stat-value" style="color:#0ecb81;">${s.totalWins}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Kaybeden</div>
+                    <div class="stat-value" style="color:#f6465d;">${s.totalLosses}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Likidasyon</div>
+                    <div class="stat-value" style="color:${liqColor};">${s.totalLiquidations}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Drawdown</div>
+                    <div class="stat-value" style="color:${s.maxDrawdown >= 0 ? '#0ecb81' : '#f6465d'};">${s.maxDrawdown.toFixed(2)}%</div>
+                </div>
+            </div>
+
+            <div class="demo-table-wrap">
+                <table class="demo-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Giriş</th>
+                            <th>Çıkış</th>
+                            <th>Gerçek PnL</th>
+                            <th>Kaldıraçlı PnL</th>
+                            <th>Başlangıç</th>
+                            <th>Bitiş</th>
+                            <th>Sonuç</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableRows}</tbody>
+                </table>
+            </div>
+        `;
+
+        // Event listeners
+        const balanceInput = panel.querySelector('#demoBalance');
+        balanceInput.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (val > 0) {
+                userBalance = val;
+                runCalculation();
+            }
+        });
+
+        panel.querySelectorAll('.lev-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                selectedLeverage = parseInt(btn.dataset.lev);
+                runCalculation();
+            });
+        });
+    };
+
+    runCalculation();
 }
 
 function renderAnalizPanel(allResults) {
@@ -212,7 +466,6 @@ function renderAnalizPanel(allResults) {
         </div>
     `;
 
-    // <-- YENİ: Tıklama olayları
     panel.querySelectorAll('.indicator-row').forEach(row => {
         row.addEventListener('click', () => {
             panel.querySelectorAll('.indicator-row').forEach(r => r.classList.remove('active'));
@@ -222,9 +475,13 @@ function renderAnalizPanel(allResults) {
             const indicatorData = allResults[indicatorName];
             const canvas = document.getElementById("mainChart");
 
-            if (canvas && canvas.updateSignals) {
-                canvas.updateSignals(indicatorData.signals);
+            // Grafik güncelle
+            if (canvas && canvas.updateTrades) {
+                canvas.updateTrades(indicatorData.tradesForChart);
             }
+
+            // Demo panel güncelle
+            renderDemoPanel(indicatorData.trades, indicatorName);
         });
     });
 }
@@ -729,13 +986,13 @@ function bbchart(raw, bbData) {
     });
 }
 
-function mainChart(raw, initialSignals = []) {
+function mainChart(raw, initialTrades = []) {
     const canvas = document.getElementById("mainChart");
     const ctx = canvas.getContext('2d');
     const container = canvas.parentElement;
 
-    // <-- YENİ: Sinyalleri canvas üzerinde sakla, dışarıdan güncellenebilsin
-    canvas.signals = initialSignals;
+    canvas.trades = initialTrades;
+    canvas.hoveredTrade = null;
 
     let visibleCount = raw.length;
     let viewStart = 0;
@@ -749,10 +1006,20 @@ function mainChart(raw, initialSignals = []) {
         canvas.height = container.clientHeight;
     };
 
+    const formatDateShort = (ts) => {
+        const d = new Date(ts);
+        const h = String(d.getHours()).padStart(2, '0');
+        const m = String(d.getMinutes()).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const mon = String(d.getMonth() + 1).padStart(2, '0');
+        return `${day}/${mon} ${h}:${m}`;
+    };
+
     const draw = () => {
         const W = canvas.width, H = canvas.height;
-        const PAD_TOP = 40, PAD_BOTTOM = 30, RIGHT_PANEL = 70;
-        const chartW = W - RIGHT_PANEL, chartH = H - PAD_BOTTOM;
+        const PAD_TOP = 40, PAD_BOTTOM = 80, RIGHT_PANEL = 90, VOL_HEIGHT = 80;
+        const chartH = H - PAD_BOTTOM - VOL_HEIGHT;
+        const chartW = W - RIGHT_PANEL;
 
         ctx.fillStyle = '#181a20';
         ctx.fillRect(0, 0, W, H);
@@ -767,19 +1034,18 @@ function mainChart(raw, initialSignals = []) {
         const minP = Math.min(...visible.map(d => +d[3]));
         const maxP = Math.max(...visible.map(d => +d[2]));
         const pRange = (maxP - minP) || 1;
+        const maxVol = Math.max(...visible.map(d => +d[5] || 0)) || 1;
 
-        const getY = (p) => PAD_TOP + (1 - (p - minP) / pRange) * (chartH - PAD_TOP - 20);
+        const getY = (p) => PAD_TOP + (1 - (p - minP) / pRange) * (chartH - PAD_TOP);
         const cW = chartW / visibleCount;
 
-        // 1. Izgara ve Fiyatlar
+        // 1. Izgara
         ctx.strokeStyle = '#2b2f36';
-        ctx.fillStyle = '#848e9c';
-        ctx.font = '11px sans-serif';
+        ctx.lineWidth = 1;
         for (let i = 0; i <= 5; i++) {
             const p = minP + (pRange * i / 5);
             const y = getY(p);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(chartW, y); ctx.stroke();
-            ctx.fillText(p.toFixed(2), chartW + 5, y + 4);
         }
 
         // 2. Mumlar
@@ -789,57 +1055,281 @@ function mainChart(raw, initialSignals = []) {
             const color = c >= o ? '#0ecb81' : '#f6465d';
             ctx.strokeStyle = ctx.fillStyle = color;
             ctx.beginPath(); ctx.moveTo(x, getY(h)); ctx.lineTo(x, getY(l)); ctx.stroke();
-            const bodyW = Math.max(0.5, cW * 0.8);
+            const bodyW = Math.max(0.5, cW * 0.75);
             ctx.fillRect(x - bodyW / 2, getY(Math.max(o, c)), bodyW, Math.max(1, Math.abs(getY(o) - getY(c))));
         });
 
-        // 3. Sinyaller (Hassas Eşleşme Düzeltildi)
-        const signals = canvas.signals || [];  // <-- YENİ: canvas.signals'dan oku
-        signals.forEach(sig => {
-            const candleIdx = visible.findIndex(d => d[0] === sig.timestamp);
+        // 3. Hacim
+        const volTop = H - PAD_BOTTOM - VOL_HEIGHT;
+        ctx.fillStyle = 'rgba(24, 26, 32, 0.95)';
+        ctx.fillRect(0, volTop, chartW, VOL_HEIGHT);
+        ctx.strokeStyle = '#2b2f36';
+        ctx.beginPath(); ctx.moveTo(0, volTop); ctx.lineTo(chartW, volTop); ctx.stroke();
 
-            if (candleIdx !== -1) {
-                const x = candleIdx * cW + cW / 2;
-                const isBuy = sig.direction === 'buy';
-                const candleData = visible[candleIdx];
-                const yPos = isBuy ? getY(+candleData[3]) : getY(+candleData[2]);
-                const color = isBuy ? '#00ff88' : '#ff3355';
+        visible.forEach((d, i) => {
+            const x = i * cW + cW / 2;
+            const c = +d[4], o = +d[1];
+            const vol = +d[5] || 0;
+            const color = c >= o ? 'rgba(14, 203, 129, 0.5)' : 'rgba(246, 70, 93, 0.5)';
+            const h = (vol / maxVol) * (VOL_HEIGHT - 10);
+            ctx.fillStyle = color;
+            ctx.fillRect(x - cW * 0.35, H - PAD_BOTTOM - h, cW * 0.7, h);
+        });
 
-                ctx.save();
+        // 4. X Ekseni
+        ctx.fillStyle = '#848e9c';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        const step = Math.max(1, Math.floor(visible.length / 8));
+        for (let i = 0; i < visible.length; i += step) {
+            const x = i * cW + cW / 2;
+            ctx.fillText(formatDateShort(visible[i][0]), x, H - PAD_BOTTOM + 15);
+        }
 
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = color;
-                ctx.fillStyle = color;
+        // 5. Son fiyat çizgisi
+        const lastClose = +visible[visible.length - 1][4];
+        const lastY = getY(lastClose);
+        ctx.strokeStyle = '#f0b90b';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, lastY); ctx.lineTo(chartW, lastY); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#f0b90b';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(lastClose.toFixed(2), chartW + 8, lastY + 4);
 
-                ctx.beginPath();
-                const circleY = isBuy ? yPos + 15 : yPos - 15;
-                ctx.arc(x, circleY, 5, 0, Math.PI * 2);
-                ctx.fill();
+        // 6. Sağ panel
+        ctx.fillStyle = '#848e9c';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'left';
+        for (let i = 0; i <= 5; i++) {
+            const p = minP + (pRange * i / 5);
+            const y = getY(p);
+            ctx.fillText(p.toFixed(2), chartW + 5, y + 4);
+        }
+        ctx.fillStyle = '#5e6673';
+        ctx.font = '10px sans-serif';
+        ctx.fillText(`Min: ${minP.toFixed(2)}`, chartW + 5, PAD_TOP - 5);
+        ctx.fillText(`Max: ${maxP.toFixed(2)}`, chartW + 5, PAD_TOP + 10);
 
-                ctx.shadowBlur = 0;
-                ctx.font = 'bold 11px Inter, sans-serif';
+        // 7. TRADE HARİTASI
+        let hoveredTrade = null;
+        const trades = canvas.trades || [];
+
+        trades.forEach(trade => {
+            const entryIdx = visible.findIndex(d => d[0] == trade.entryTimestamp);
+            const exitIdx = visible.findIndex(d => d[0] == trade.exitTimestamp);
+
+            if (entryIdx === -1 && exitIdx === -1) return;
+
+            const isProfit = trade.isSuccess;
+            const fillColor = isProfit ? 'rgba(14, 203, 129, 0.07)' : 'rgba(246, 70, 93, 0.07)';
+            const borderColor = isProfit ? '#0ecb81' : '#f6465d';
+
+            const x1 = entryIdx !== -1 ? entryIdx * cW + cW / 2 : null;
+            const x2 = exitIdx !== -1 ? exitIdx * cW + cW / 2 : null;
+            const y1 = getY(trade.entryPrice);
+            const y2 = getY(trade.exitPrice);
+
+            if (entryIdx !== -1 && exitIdx !== -1) {
+                const boxX = x1;
+                const boxY = Math.min(y1, y2);
+                const boxW = x2 - x1;
+                const boxH = Math.abs(y2 - y1);
+
+                if (mouseX >= boxX && mouseX <= boxX + boxW &&
+                    mouseY >= boxY && mouseY <= boxY + boxH) {
+                    hoveredTrade = trade;
+                }
+
+                ctx.fillStyle = fillColor;
+                ctx.fillRect(boxX, boxY, boxW, boxH);
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.5;
+                ctx.strokeRect(boxX, boxY, boxW, boxH);
+                ctx.globalAlpha = 1;
+
+                const midX = (x1 + x2) / 2;
+                const midY = (y1 + y2) / 2;
+                const infoText = `${trade.pnl > 0 ? '+' : ''}${trade.pnl}%  ·  ${trade.duration} mum`;
+                ctx.font = 'bold 10px sans-serif';
+                const textWidth = ctx.measureText(infoText).width;
+
+                ctx.fillStyle = 'rgba(24, 26, 32, 0.95)';
+                ctx.fillRect(midX - textWidth/2 - 8, midY - 11, textWidth + 16, 22);
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(midX - textWidth/2 - 8, midY - 11, textWidth + 16, 22);
+
+                ctx.fillStyle = borderColor;
                 ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(infoText, midX, midY);
+                ctx.textBaseline = 'alphabetic';
+            }
 
-                const reasonText = sig.reasons.join(' + ');
-                const labelY = isBuy ? circleY + 15 : circleY - 10;
-
-                const textWidth = ctx.measureText(reasonText).width;
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(x - (textWidth / 2) - 5, labelY - 10, textWidth + 10, 14);
-
-                ctx.fillStyle = color;
-                ctx.fillText(reasonText, x, labelY);
-
+            if (entryIdx !== -1) {
+                ctx.save();
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#0ecb81';
+                ctx.fillStyle = '#0ecb81';
+                ctx.beginPath();
+                ctx.moveTo(x1, y1 + 10);
+                ctx.lineTo(x1 - 7, y1 + 24);
+                ctx.lineTo(x1 + 7, y1 + 24);
+                ctx.fill();
                 ctx.restore();
+
+                const label1 = `AL #${trade.id}`;
+                const label2 = trade.entryPrice.toFixed(2);
+                ctx.font = 'bold 9px sans-serif';
+                const w1 = ctx.measureText(label1).width;
+                ctx.font = '9px sans-serif';
+                const w2 = ctx.measureText(label2).width;
+                const labelW = Math.max(w1, w2) + 12;
+                const labelH = 26;
+                const lx = x1 - labelW / 2;
+                const ly = y1 + 26;
+
+                ctx.fillStyle = 'rgba(14, 203, 129, 0.12)';
+                ctx.strokeStyle = 'rgba(14, 203, 129, 0.6)';
+                ctx.lineWidth = 1;
+                ctx.fillRect(lx, ly, labelW, labelH);
+                ctx.strokeRect(lx, ly, labelW, labelH);
+
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#0ecb81';
+                ctx.font = 'bold 9px sans-serif';
+                ctx.fillText(label1, x1, ly + 11);
+                ctx.fillStyle = '#eaecef';
+                ctx.font = '9px sans-serif';
+                ctx.fillText(label2, x1, ly + 22);
+            }
+
+            if (exitIdx !== -1) {
+                ctx.save();
+                ctx.shadowBlur = 12;
+                ctx.shadowColor = '#f6465d';
+                ctx.fillStyle = '#f6465d';
+                ctx.beginPath();
+                ctx.moveTo(x2, y2 - 10);
+                ctx.lineTo(x2 - 7, y2 - 24);
+                ctx.lineTo(x2 + 7, y2 - 24);
+                ctx.fill();
+                ctx.restore();
+
+                const label1 = `SAT #${trade.id}`;
+                const label2 = `${trade.exitPrice.toFixed(2)}  (${trade.pnl > 0 ? '+' : ''}${trade.pnl}%)`;
+                ctx.font = 'bold 9px sans-serif';
+                const w1 = ctx.measureText(label1).width;
+                ctx.font = '9px sans-serif';
+                const w2 = ctx.measureText(label2).width;
+                const labelW = Math.max(w1, w2) + 12;
+                const labelH = 26;
+                const lx = x2 - labelW / 2;
+                const ly = y2 - 52;
+
+                ctx.fillStyle = 'rgba(246, 70, 93, 0.12)';
+                ctx.strokeStyle = 'rgba(246, 70, 93, 0.6)';
+                ctx.lineWidth = 1;
+                ctx.fillRect(lx, ly, labelW, labelH);
+                ctx.strokeRect(lx, ly, labelW, labelH);
+
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#f6465d';
+                ctx.font = 'bold 9px sans-serif';
+                ctx.fillText(label1, x2, ly + 11);
+                ctx.fillStyle = '#eaecef';
+                ctx.font = '9px sans-serif';
+                ctx.fillText(label2, x2, ly + 22);
             }
         });
 
-        // 4. Crosshair
-        if (mouseX > 0 && mouseX < chartW) {
-            ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.beginPath(); ctx.moveTo(mouseX, 0); ctx.lineTo(mouseX, chartH); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0, mouseY); ctx.lineTo(chartW, mouseY); ctx.stroke();
-            ctx.setLineDash([]);
+        canvas.hoveredTrade = hoveredTrade;
+
+        // 8. CROSSHAIR + TOOLTIP
+        if (mouseX > 0 && mouseX < chartW && mouseY > PAD_TOP && mouseY < chartH) {
+            const candleIdx = Math.floor(mouseX / cW);
+            
+            if (hoveredTrade) {
+                const ttW = 200, ttH = 120;
+                let tx = mouseX + 15, ty = mouseY + 15;
+                if (tx + ttW > chartW) tx = mouseX - ttW - 15;
+                if (ty + ttH > chartH) ty = mouseY - ttH - 15;
+
+                const t = hoveredTrade;
+                const color = t.isSuccess ? '#0ecb81' : '#f6465d';
+
+                ctx.fillStyle = 'rgba(30, 35, 41, 0.98)';
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1;
+                ctx.fillRect(tx, ty, ttW, ttH);
+                ctx.strokeRect(tx, ty, ttW, ttH);
+
+                const lines = [
+                    [`İŞLEM #${t.id}`, '', '#f0b90b'],
+                    [`Giriş:`, `${t.entryPrice.toFixed(2)}  (${formatDateShort(t.entryTimestamp)})`, '#eaecef'],
+                    [`Çıkış:`, `${t.exitPrice.toFixed(2)}  (${formatDateShort(t.exitTimestamp)})`, '#eaecef'],
+                    [`Süre:`, `${t.duration} mum`, '#848e9c'],
+                    [`PnL:`, `${t.pnl > 0 ? '+' : ''}${t.pnl}%`, color],
+                    [`Sonuç:`, t.isSuccess ? 'KAZANÇ ✅' : 'KAYIP ❌', color]
+                ];
+
+                ctx.textAlign = 'left';
+                lines.forEach((line, i) => {
+                    ctx.fillStyle = line[2];
+                    ctx.font = i === 0 ? 'bold 11px sans-serif' : '11px sans-serif';
+                    ctx.fillText(line[0], tx + 10, ty + 18 + i * 17);
+                    ctx.textAlign = 'right';
+                    ctx.fillText(line[1], tx + ttW - 10, ty + 18 + i * 17);
+                    ctx.textAlign = 'left';
+                });
+            } else if (candleIdx >= 0 && candleIdx < visible.length) {
+                const d = visible[candleIdx];
+                const x = candleIdx * cW + cW / 2;
+                const o = +d[1], h = +d[2], l = +d[3], c = +d[4], vol = +d[5] || 0;
+                const change = ((c - o) / o) * 100;
+                const changeColor = change >= 0 ? '#0ecb81' : '#f6465d';
+
+                ctx.setLineDash([4, 4]);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(x, PAD_TOP); ctx.lineTo(x, chartH); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, mouseY); ctx.lineTo(chartW, mouseY); ctx.stroke();
+                ctx.setLineDash([]);
+
+                const tooltipW = 170, tooltipH = 115;
+                let tx = x + 15, ty = mouseY + 15;
+                if (tx + tooltipW > chartW) tx = x - tooltipW - 15;
+                if (ty + tooltipH > chartH) ty = mouseY - tooltipH - 15;
+
+                ctx.fillStyle = 'rgba(30, 35, 41, 0.95)';
+                ctx.strokeStyle = '#2b2f36';
+                ctx.lineWidth = 1;
+                ctx.fillRect(tx, ty, tooltipW, tooltipH);
+                ctx.strokeRect(tx, ty, tooltipW, tooltipH);
+
+                const lines = [
+                    [`Tarih`, formatDateShort(d[0]), '#848e9c'],
+                    [`Açılış`, o.toFixed(2), '#eaecef'],
+                    [`Yüksek`, h.toFixed(2), '#0ecb81'],
+                    [`Düşük`, l.toFixed(2), '#f6465d'],
+                    [`Kapanış`, c.toFixed(2), c >= o ? '#0ecb81' : '#f6465d'],
+                    [`Hacim`, vol.toLocaleString('tr-TR'), '#848e9c'],
+                    [`Değişim`, `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`, changeColor]
+                ];
+
+                lines.forEach((line, i) => {
+                    ctx.fillStyle = line[2];
+                    ctx.font = '11px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(line[0] + ':', tx + 10, ty + 18 + i * 14);
+                    ctx.textAlign = 'right';
+                    ctx.fillText(line[1], tx + tooltipW - 10, ty + 18 + i * 14);
+                });
+            }
         }
     };
 
@@ -873,9 +1363,8 @@ function mainChart(raw, initialSignals = []) {
     canvas.resizeHandler = resizeHandler;
     window.addEventListener('resize', resizeHandler);
 
-    // <-- YENİ: Dışarıdan sinyal güncelleme fonksiyonu
-    canvas.updateSignals = (newSignals) => {
-        canvas.signals = newSignals;
+    canvas.updateTrades = (newTrades) => {
+        canvas.trades = newTrades;
         draw();
     };
 
