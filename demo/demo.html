@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>BTC Bot</title>
+<style>
+  body { background:#0a0a0a; color:#ccc; font-family:'Courier New',monospace; font-size:13px; padding:20px; max-width:700px; margin:0 auto; }
+  h2 { color:#f0a500; border-bottom:1px solid #222; padding-bottom:8px; font-size:16px; }
+  input, select, button { background:#111; border:1px solid #333; color:#ccc; padding:6px 10px; font-family:inherit; font-size:13px; border-radius:3px; }
+  button { cursor:pointer; background:#f0a500; color:#000; border:none; font-weight:bold; }
+  button:hover { opacity:0.8; }
+  .row { display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap; align-items:center; }
+  .row > * { flex:1; min-width:100px; }
+  .checks { display:flex; gap:12px; flex-wrap:wrap; margin:8px 0; }
+  .checks label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .log { padding:5px 0; border-bottom:1px solid #1a1a1a; font-size:12px; }
+  .BUY { color:#26a69a; } .SELL { color:#ef5350; } .LIQUIDATED { color:#ef5350; font-weight:bold; }
+  .ts { color:#555; margin-right:8px; }
+  .bot-item { padding:8px; background:#111; border:1px solid #222; margin-bottom:6px; cursor:pointer; border-radius:4px; }
+  .bot-item:hover { border-color:#f0a500; }
+  .bot-item.active { border-color:#f0a500; background:#1a1500; }
+  .stats { color:#888; font-size:11px; margin-top:4px; }
+  #msg { color:#f0a500; margin:10px 0; min-height:20px; font-weight:bold; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
+  @media(max-width:600px){ .grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<h2>⬡ Yeni Bot Oluştur</h2>
+<div class="row">
+  <input id="name" placeholder="Bot adı" value="Bot-1">
+  <input id="balance" type="number" placeholder="Bakiye (USDT)" value="1000">
+</div>
+<div class="row">
+  <select id="tf">
+    <option value="1m">1 Dakika</option>
+    <option value="5m">5 Dakika</option>
+    <option value="15m" selected>15 Dakika</option>
+    <option value="1h">1 Saat</option>
+  </select>
+  <input id="lev" type="number" placeholder="Kaldıraç (x)" value="5">
+</div>
+<div class="checks">
+  <label><input type="checkbox" class="ind" value="RSI" checked> RSI</label>
+  <label><input type="checkbox" class="ind" value="MACD (Güçlü)"> MACD Güçlü</label>
+  <label><input type="checkbox" class="ind" value="MACD (Zayıf)"> MACD Zayıf</label>
+  <label><input type="checkbox" class="ind" value="Bollinger Bands"> BB</label>
+  <label><input type="checkbox" class="ind" value="KDJ"> KDJ</label>
+</div>
+<button onclick="createBot()" style="width:100%">Bot Oluştur</button>
+<div id="msg"></div>
+
+<div class="grid">
+  <div>
+    <h2>🤖 Botlar</h2>
+    <div id="bots"><p style="color:#555">Yükleniyor...</p></div>
+  </div>
+  <div>
+    <h2>📜 Loglar</h2>
+    <div id="logs"><p style="color:#555">Bot seçin...</p></div>
+  </div>
+</div>
+
+<script>
+const API = 'http://127.0.0.1:8000';
+let activeBotId = null;
+
+async function createBot() {
+  const indicators = [...document.querySelectorAll('.ind:checked')].map(x => x.value);
+  if(indicators.length === 0) { showMsg('En az 1 indikatör seçin'); return; }
+  
+  const body = {
+    name: document.getElementById('name').value || 'Bot',
+    balance: parseFloat(document.getElementById('balance').value) || 1000,
+    timeframe: document.getElementById('tf').value,
+    indicators: indicators,
+    leverage: parseInt(document.getElementById('lev').value) || 1
+  };
+
+  try {
+    const r = await fetch(`${API}/api/strategies`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if(j.error) { showMsg('Hata: ' + j.error); return; }
+    
+    showMsg(`✓ Bot #${j.id} oluşturuldu`);
+    document.getElementById('name').value = 'Bot-' + (j.id + 1);
+    await loadBots();
+    activeBotId = j.id;
+    await loadLogs(j.id);
+  } catch(e) {
+    showMsg('Bağlantı hatası: ' + e.message);
+  }
+}
+
+async function loadBots() {
+  try {
+    const r = await fetch(`${API}/api/strategies`);
+    const j = await r.json();
+    const el = document.getElementById('bots');
+    if(!j.strategies || j.strategies.length === 0) {
+      el.innerHTML = '<p style="color:#555">Henüz bot yok</p>'; return;
+    }
+    el.innerHTML = j.strategies.map(b => `
+      <div class="bot-item ${b.id === activeBotId ? 'active' : ''}" onclick="selectBot(${b.id})">
+        <b>#${b.id} ${b.name}</b> <span style="color:#888">[${b.timeframe}]</span>
+        <div class="stats">
+          Bakiye: ${b.balance.toFixed(2)} USDT | Kaldıraç: ${b.leverage}x | 
+          Pozisyon: ${b.in_position ? 'AÇIK' : 'KAPALI'} | 
+          İndikatörler: ${b.indicators.join(', ')}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('bots').innerHTML = '<p style="color:#ef5350">Botlar yüklenemedi</p>';
+  }
+}
+
+function selectBot(id) {
+  activeBotId = id;
+  loadBots();
+  loadLogs(id);
+}
+
+async function loadLogs(id) {
+  if(!id) return;
+  try {
+    const r = await fetch(`${API}/api/strategies/${id}/logs`);
+    const j = await r.json();
+    const el = document.getElementById('logs');
+    if(!j.logs || j.logs.length === 0) {
+      el.innerHTML = '<p style="color:#555">Henüz işlem yok</p>'; return;
+    }
+    el.innerHTML = j.logs.map(l => `
+      <div class="log ${l.log_type}">
+        <span class="ts">${new Date(l.timestamp).toLocaleTimeString()}</span>
+        <b>${l.log_type}</b> @ ${l.price ? l.price.toFixed(2) : '-'} 
+        | Bakiye: ${l.current_balance !== null ? l.current_balance.toFixed(2) : '-'} 
+        <div style="color:#888;margin-top:2px">${l.message}</div>
+      </div>
+    `).join('');
+  } catch(e) {
+    document.getElementById('logs').innerHTML = '<p style="color:#ef5350">Loglar yüklenemedi</p>';
+  }
+}
+
+function showMsg(t) {
+  const el = document.getElementById('msg');
+  el.textContent = t;
+  setTimeout(() => el.textContent = '', 4000);
+}
+
+// Sayfa açılınca ve her 5 saniyede
+loadBots();
+setInterval(() => { loadBots(); if(activeBotId) loadLogs(activeBotId); }, 5000);
+</script>
+
+</body>
+</html>

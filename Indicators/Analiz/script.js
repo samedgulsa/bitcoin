@@ -28,6 +28,7 @@ async function main(interval = "15m") {
     mainChart(raw, historySignals)
 }
 
+
 document.querySelectorAll('.times button').forEach(btn => {
     btn.addEventListener('click', () => main(btn.id));
 });
@@ -414,18 +415,160 @@ function renderDemoPanel(trades, indicatorName) {
     runCalculation();
 }
 
+function renderIndicatorButtons(allResults) {
+    // Grafik container'ının üstüne buton satırı ekle
+    const canvas = document.getElementById("mainChart");
+    if (!canvas) return;
+ 
+    const container = canvas.parentElement;
+ 
+    // Daha önce eklenmişse kaldır
+    const old = document.getElementById("indicatorButtons");
+    if (old) old.remove();
+ 
+    const btnRow = document.createElement('div');
+    btnRow.id = 'indicatorButtons';
+    btnRow.style.cssText = `
+        display: flex;
+        gap: 6px;
+        padding: 8px 12px;
+        background: #181a20;
+        border-bottom: 1px solid #2b2f36;
+        flex-wrap: wrap;
+        align-items: center;
+        font-family: monospace;
+    `;
+ 
+    // Başlık
+    const label = document.createElement('span');
+    label.textContent = 'İNDİKATÖRLER:';
+    label.style.cssText = 'font-size: 10px; color: #5e6673; letter-spacing: 1px; margin-right: 4px;';
+    btnRow.appendChild(label);
+ 
+    Object.entries(allResults).forEach(([name, data]) => {
+        const color = INDICATOR_COLORS[name] || '#ffffff';
+        let active = false;
+ 
+        const btn = document.createElement('button');
+        btn.textContent = name;
+        btn.dataset.indicator = name;
+ 
+        const setStyle = () => {
+            btn.style.cssText = `
+                padding: 4px 12px;
+                font-family: monospace;
+                font-size: 11px;
+                cursor: pointer;
+                border-radius: 4px;
+                transition: all 0.15s;
+                border: 1px solid ${active ? color : '#2b2f36'};
+                background: ${active ? color + '22' : '#1e2329'};
+                color: ${active ? color : '#5e6673'};
+                font-weight: ${active ? 'bold' : 'normal'};
+                box-shadow: ${active ? `0 0 8px ${color}44` : 'none'};
+            `;
+        };
+ 
+        setStyle();
+ 
+        btn.addEventListener('click', () => {
+            active = !active;
+            setStyle();
+            if (canvas.setIndicator) {
+                canvas.setIndicator(name, data.tradesForChart, active);
+            }
+        });
+ 
+        btn.addEventListener('mouseenter', () => {
+            if (!active) {
+                btn.style.borderColor = color + '88';
+                btn.style.color = color + 'aa';
+            }
+        });
+        btn.addEventListener('mouseleave', () => {
+            if (!active) {
+                btn.style.borderColor = '#2b2f36';
+                btn.style.color = '#5e6673';
+            }
+        });
+ 
+        btnRow.appendChild(btn);
+    });
+ 
+    // "Tümünü Temizle" butonu
+    const clearBtn = document.createElement('button');
+    clearBtn.textContent = '✕ Temizle';
+    clearBtn.style.cssText = `
+        padding: 4px 10px;
+        font-family: monospace;
+        font-size: 10px;
+        cursor: pointer;
+        border-radius: 4px;
+        border: 1px solid #2b2f36;
+        background: #1e2329;
+        color: #5e6673;
+        margin-left: 8px;
+        transition: all 0.15s;
+    `;
+    clearBtn.addEventListener('click', () => {
+        // Tüm butonları pasife al
+        btnRow.querySelectorAll('button[data-indicator]').forEach(b => {
+            b.click();
+            // Sadece active olanları kapat
+        });
+        // Daha güvenli: activeTradesMap'i temizle
+        if (canvas.activeTradesMap) {
+            canvas.activeTradesMap = {};
+        }
+        // Tüm butonları pasife zorla
+        btnRow.querySelectorAll('button[data-indicator]').forEach(b => {
+            const n = b.dataset.indicator;
+            const c = INDICATOR_COLORS[n] || '#fff';
+            b.style.cssText = `
+                padding: 4px 12px;
+                font-family: monospace;
+                font-size: 11px;
+                cursor: pointer;
+                border-radius: 4px;
+                border: 1px solid #2b2f36;
+                background: #1e2329;
+                color: #5e6673;
+                font-weight: normal;
+                box-shadow: none;
+                transition: all 0.15s;
+            `;
+        });
+        if (canvas.setIndicator) canvas.setIndicator('__clear__', [], false);
+        // Manuel redraw
+        const redrawEvent = new Event('mousemove');
+        canvas.dispatchEvent(redrawEvent);
+    });
+    btnRow.appendChild(clearBtn);
+ 
+    // Canvas container'ın başına ekle
+    container.insertBefore(btnRow, canvas);
+}
+
 function renderAnalizPanel(allResults) {
     const panel = document.querySelector('.analiz-panel');
-
+    if (!panel) return;
+ 
+    // Butonları da render et
+    renderIndicatorButtons(allResults);
+ 
     const rows = Object.entries(allResults).map(([name, data]) => {
         const s = data.stats;
+        const color = INDICATOR_COLORS[name] || '#ffffff';
         const pnlColor = s.totalPnl >= 0 ? '#0ecb81' : '#f6465d';
-        const avgColor = s.avgPnl >= 0 ? '#0ecb81' : '#f6465d';
+        const avgColor = s.avgPnl  >= 0 ? '#0ecb81' : '#f6465d';
         const wrColor  = s.winRate >= 50 ? '#0ecb81' : '#f6465d';
-
+ 
         return `
             <tr class="indicator-row" data-indicator="${name}" style="border-bottom: 1px solid #1e2329; cursor: pointer; transition: background 0.2s;">
-                <td style="padding: 8px; color: #eaecef;">${name}</td>
+                <td style="padding: 8px; color: #eaecef; display: flex; align-items: center; gap: 8px;">
+                    <span style="display:inline-block; width:10px; height:10px; border-radius:2px; background:${color};"></span>
+                    ${name}
+                </td>
                 <td style="padding: 8px; text-align: center; color: #f0b90b;">${s.total}</td>
                 <td style="padding: 8px; text-align: center; color: ${wrColor};">%${s.winRate}</td>
                 <td style="padding: 8px; text-align: center; color: #0ecb81;">${s.wins}</td>
@@ -436,7 +579,7 @@ function renderAnalizPanel(allResults) {
             </tr>
         `;
     }).join('');
-
+ 
     panel.innerHTML = `
         <style>
             .indicator-row:hover { background: #2b2f36 !important; }
@@ -465,21 +608,15 @@ function renderAnalizPanel(allResults) {
             </div>
         </div>
     `;
-
+ 
     panel.querySelectorAll('.indicator-row').forEach(row => {
         row.addEventListener('click', () => {
             panel.querySelectorAll('.indicator-row').forEach(r => r.classList.remove('active'));
             row.classList.add('active');
-
+ 
             const indicatorName = row.getAttribute('data-indicator');
             const indicatorData = allResults[indicatorName];
-            const canvas = document.getElementById("mainChart");
-
-            // Grafik güncelle
-            if (canvas && canvas.updateTrades) {
-                canvas.updateTrades(indicatorData.tradesForChart);
-            }
-
+ 
             // Demo panel güncelle
             renderDemoPanel(indicatorData.trades, indicatorName);
         });
@@ -986,26 +1123,36 @@ function bbchart(raw, bbData) {
     });
 }
 
+
+const INDICATOR_COLORS = {
+    "RSI":          "#ff9800",   // Turuncu
+    "MACD (Güçlü)": "#2196f3",  // Mavi
+    "MACD (Zayıf)": "#9c27b0",  // Mor
+    "Bollinger Bands": "#f0b90b", // Sarı
+    "KDJ":          "#e91e63"    // Pembe
+};
+
 function mainChart(raw, initialTrades = []) {
     const canvas = document.getElementById("mainChart");
     const ctx = canvas.getContext('2d');
     const container = canvas.parentElement;
-
-    canvas.trades = initialTrades;
+ 
+    // activeTradesMap: { indicatorName -> tradesForChart[] }
+    canvas.activeTradesMap = {};
     canvas.hoveredTrade = null;
-
+ 
     let visibleCount = raw.length;
     let viewStart = 0;
-
+ 
     let isDragging = false;
     let dragStartX = 0, dragStartView = 0;
     let mouseX = -1, mouseY = -1;
-
+ 
     const syncSize = () => {
         canvas.width = container.clientWidth;
         canvas.height = container.clientHeight;
     };
-
+ 
     const formatDateShort = (ts) => {
         const d = new Date(ts);
         const h = String(d.getHours()).padStart(2, '0');
@@ -1014,31 +1161,38 @@ function mainChart(raw, initialTrades = []) {
         const mon = String(d.getMonth() + 1).padStart(2, '0');
         return `${day}/${mon} ${h}:${m}`;
     };
-
+ 
+    const hexToRgba = (hex, alpha) => {
+        const r = parseInt(hex.slice(1,3), 16);
+        const g = parseInt(hex.slice(3,5), 16);
+        const b = parseInt(hex.slice(5,7), 16);
+        return `rgba(${r},${g},${b},${alpha})`;
+    };
+ 
     const draw = () => {
         const W = canvas.width, H = canvas.height;
         const PAD_TOP = 40, PAD_BOTTOM = 80, RIGHT_PANEL = 90, VOL_HEIGHT = 80;
         const chartH = H - PAD_BOTTOM - VOL_HEIGHT;
         const chartW = W - RIGHT_PANEL;
-
+ 
         ctx.fillStyle = '#181a20';
         ctx.fillRect(0, 0, W, H);
-
+ 
         const visible = raw.slice(
             Math.max(0, Math.floor(viewStart)),
             Math.min(raw.length, Math.floor(viewStart + visibleCount))
         );
-
+ 
         if (visible.length === 0) return;
-
+ 
         const minP = Math.min(...visible.map(d => +d[3]));
         const maxP = Math.max(...visible.map(d => +d[2]));
         const pRange = (maxP - minP) || 1;
         const maxVol = Math.max(...visible.map(d => +d[5] || 0)) || 1;
-
+ 
         const getY = (p) => PAD_TOP + (1 - (p - minP) / pRange) * (chartH - PAD_TOP);
         const cW = chartW / visibleCount;
-
+ 
         // 1. Izgara
         ctx.strokeStyle = '#2b2f36';
         ctx.lineWidth = 1;
@@ -1047,7 +1201,7 @@ function mainChart(raw, initialTrades = []) {
             const y = getY(p);
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(chartW, y); ctx.stroke();
         }
-
+ 
         // 2. Mumlar
         visible.forEach((d, i) => {
             const x = i * cW + cW / 2;
@@ -1058,14 +1212,14 @@ function mainChart(raw, initialTrades = []) {
             const bodyW = Math.max(0.5, cW * 0.75);
             ctx.fillRect(x - bodyW / 2, getY(Math.max(o, c)), bodyW, Math.max(1, Math.abs(getY(o) - getY(c))));
         });
-
+ 
         // 3. Hacim
         const volTop = H - PAD_BOTTOM - VOL_HEIGHT;
         ctx.fillStyle = 'rgba(24, 26, 32, 0.95)';
         ctx.fillRect(0, volTop, chartW, VOL_HEIGHT);
         ctx.strokeStyle = '#2b2f36';
         ctx.beginPath(); ctx.moveTo(0, volTop); ctx.lineTo(chartW, volTop); ctx.stroke();
-
+ 
         visible.forEach((d, i) => {
             const x = i * cW + cW / 2;
             const c = +d[4], o = +d[1];
@@ -1075,7 +1229,7 @@ function mainChart(raw, initialTrades = []) {
             ctx.fillStyle = color;
             ctx.fillRect(x - cW * 0.35, H - PAD_BOTTOM - h, cW * 0.7, h);
         });
-
+ 
         // 4. X Ekseni
         ctx.fillStyle = '#848e9c';
         ctx.font = '10px sans-serif';
@@ -1085,7 +1239,7 @@ function mainChart(raw, initialTrades = []) {
             const x = i * cW + cW / 2;
             ctx.fillText(formatDateShort(visible[i][0]), x, H - PAD_BOTTOM + 15);
         }
-
+ 
         // 5. Son fiyat çizgisi
         const lastClose = +visible[visible.length - 1][4];
         const lastY = getY(lastClose);
@@ -1098,7 +1252,7 @@ function mainChart(raw, initialTrades = []) {
         ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'left';
         ctx.fillText(lastClose.toFixed(2), chartW + 8, lastY + 4);
-
+ 
         // 6. Sağ panel
         ctx.fillStyle = '#848e9c';
         ctx.font = '11px sans-serif';
@@ -1112,205 +1266,263 @@ function mainChart(raw, initialTrades = []) {
         ctx.font = '10px sans-serif';
         ctx.fillText(`Min: ${minP.toFixed(2)}`, chartW + 5, PAD_TOP - 5);
         ctx.fillText(`Max: ${maxP.toFixed(2)}`, chartW + 5, PAD_TOP + 10);
-
-        // 7. TRADE HARİTASI
+ 
+        // 7. TRADE HARİTASI — tüm aktif indikatörler
         let hoveredTrade = null;
-        const trades = canvas.trades || [];
-
-        trades.forEach(trade => {
-            const entryIdx = visible.findIndex(d => d[0] == trade.entryTimestamp);
-            const exitIdx = visible.findIndex(d => d[0] == trade.exitTimestamp);
-
-            if (entryIdx === -1 && exitIdx === -1) return;
-
-            const isProfit = trade.isSuccess;
-            const fillColor = isProfit ? 'rgba(14, 203, 129, 0.07)' : 'rgba(246, 70, 93, 0.07)';
-            const borderColor = isProfit ? '#0ecb81' : '#f6465d';
-
-            const x1 = entryIdx !== -1 ? entryIdx * cW + cW / 2 : null;
-            const x2 = exitIdx !== -1 ? exitIdx * cW + cW / 2 : null;
-            const y1 = getY(trade.entryPrice);
-            const y2 = getY(trade.exitPrice);
-
-            if (entryIdx !== -1 && exitIdx !== -1) {
-                const boxX = x1;
-                const boxY = Math.min(y1, y2);
-                const boxW = x2 - x1;
-                const boxH = Math.abs(y2 - y1);
-
-                if (mouseX >= boxX && mouseX <= boxX + boxW &&
-                    mouseY >= boxY && mouseY <= boxY + boxH) {
-                    hoveredTrade = trade;
+ 
+        // Çakışma takibi: mum index -> kaç etiket var (offset hesabı için)
+        const entryOffsets = {};
+        const exitOffsets  = {};
+ 
+        const activeEntries = Object.entries(canvas.activeTradesMap);
+ 
+        activeEntries.forEach(([indicatorName, trades]) => {
+            const color = INDICATOR_COLORS[indicatorName] || '#ffffff';
+ 
+            trades.forEach(trade => {
+                const entryIdx = visible.findIndex(d => d[0] == trade.entryTimestamp);
+                const exitIdx  = visible.findIndex(d => d[0] == trade.exitTimestamp);
+ 
+                if (entryIdx === -1 && exitIdx === -1) return;
+ 
+                const x1 = entryIdx !== -1 ? entryIdx * cW + cW / 2 : null;
+                const x2 = exitIdx  !== -1 ? exitIdx  * cW + cW / 2 : null;
+                const y1 = entryIdx !== -1 ? getY(trade.entryPrice) : null;
+                const y2 = exitIdx  !== -1 ? getY(trade.exitPrice)  : null;
+ 
+                // Kutu
+                if (entryIdx !== -1 && exitIdx !== -1) {
+                    const boxX = x1;
+                    const boxY = Math.min(y1, y2);
+                    const boxW = x2 - x1;
+                    const boxH = Math.abs(y2 - y1);
+ 
+                    if (mouseX >= boxX && mouseX <= boxX + boxW &&
+                        mouseY >= boxY && mouseY <= boxY + boxH) {
+                        hoveredTrade = { trade, color, indicatorName };
+                    }
+ 
+                    ctx.fillStyle = hexToRgba(color, 0.07);
+                    ctx.fillRect(boxX, boxY, boxW, boxH);
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1;
+                    ctx.globalAlpha = 0.4;
+                    ctx.strokeRect(boxX, boxY, boxW, boxH);
+                    ctx.globalAlpha = 1;
+ 
+                    // Orta etiket (PnL + süre)
+                    const midX = (x1 + x2) / 2;
+                    const midY = (y1 + y2) / 2;
+                    const infoText = `${trade.pnl > 0 ? '+' : ''}${trade.pnl}%  ·  ${trade.duration}m`;
+                    ctx.font = 'bold 9px sans-serif';
+                    const textWidth = ctx.measureText(infoText).width;
+ 
+                    ctx.fillStyle = 'rgba(24, 26, 32, 0.90)';
+                    ctx.fillRect(midX - textWidth/2 - 6, midY - 9, textWidth + 12, 18);
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(midX - textWidth/2 - 6, midY - 9, textWidth + 12, 18);
+ 
+                    ctx.fillStyle = color;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(infoText, midX, midY);
+                    ctx.textBaseline = 'alphabetic';
                 }
-
-                ctx.fillStyle = fillColor;
-                ctx.fillRect(boxX, boxY, boxW, boxH);
-                ctx.strokeStyle = borderColor;
-                ctx.lineWidth = 1;
-                ctx.globalAlpha = 0.5;
-                ctx.strokeRect(boxX, boxY, boxW, boxH);
-                ctx.globalAlpha = 1;
-
-                const midX = (x1 + x2) / 2;
-                const midY = (y1 + y2) / 2;
-                const infoText = `${trade.pnl > 0 ? '+' : ''}${trade.pnl}%  ·  ${trade.duration} mum`;
-                ctx.font = 'bold 10px sans-serif';
-                const textWidth = ctx.measureText(infoText).width;
-
-                ctx.fillStyle = 'rgba(24, 26, 32, 0.95)';
-                ctx.fillRect(midX - textWidth/2 - 8, midY - 11, textWidth + 16, 22);
-                ctx.strokeStyle = borderColor;
-                ctx.lineWidth = 1;
-                ctx.strokeRect(midX - textWidth/2 - 8, midY - 11, textWidth + 16, 22);
-
-                ctx.fillStyle = borderColor;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(infoText, midX, midY);
-                ctx.textBaseline = 'alphabetic';
-            }
-
-            if (entryIdx !== -1) {
-                ctx.save();
-                ctx.shadowBlur = 12;
-                ctx.shadowColor = '#0ecb81';
-                ctx.fillStyle = '#0ecb81';
-                ctx.beginPath();
-                ctx.moveTo(x1, y1 + 10);
-                ctx.lineTo(x1 - 7, y1 + 24);
-                ctx.lineTo(x1 + 7, y1 + 24);
-                ctx.fill();
-                ctx.restore();
-
-                const label1 = `AL #${trade.id}`;
-                const label2 = trade.entryPrice.toFixed(2);
-                ctx.font = 'bold 9px sans-serif';
-                const w1 = ctx.measureText(label1).width;
-                ctx.font = '9px sans-serif';
-                const w2 = ctx.measureText(label2).width;
-                const labelW = Math.max(w1, w2) + 12;
-                const labelH = 26;
-                const lx = x1 - labelW / 2;
-                const ly = y1 + 26;
-
-                ctx.fillStyle = 'rgba(14, 203, 129, 0.12)';
-                ctx.strokeStyle = 'rgba(14, 203, 129, 0.6)';
-                ctx.lineWidth = 1;
-                ctx.fillRect(lx, ly, labelW, labelH);
-                ctx.strokeRect(lx, ly, labelW, labelH);
-
-                ctx.textAlign = 'center';
-                ctx.fillStyle = '#0ecb81';
-                ctx.font = 'bold 9px sans-serif';
-                ctx.fillText(label1, x1, ly + 11);
-                ctx.fillStyle = '#eaecef';
-                ctx.font = '9px sans-serif';
-                ctx.fillText(label2, x1, ly + 22);
-            }
-
-            if (exitIdx !== -1) {
-                ctx.save();
-                ctx.shadowBlur = 12;
-                ctx.shadowColor = '#f6465d';
-                ctx.fillStyle = '#f6465d';
-                ctx.beginPath();
-                ctx.moveTo(x2, y2 - 10);
-                ctx.lineTo(x2 - 7, y2 - 24);
-                ctx.lineTo(x2 + 7, y2 - 24);
-                ctx.fill();
-                ctx.restore();
-
-                const label1 = `SAT #${trade.id}`;
-                const label2 = `${trade.exitPrice.toFixed(2)}  (${trade.pnl > 0 ? '+' : ''}${trade.pnl}%)`;
-                ctx.font = 'bold 9px sans-serif';
-                const w1 = ctx.measureText(label1).width;
-                ctx.font = '9px sans-serif';
-                const w2 = ctx.measureText(label2).width;
-                const labelW = Math.max(w1, w2) + 12;
-                const labelH = 26;
-                const lx = x2 - labelW / 2;
-                const ly = y2 - 52;
-
-                ctx.fillStyle = 'rgba(246, 70, 93, 0.12)';
-                ctx.strokeStyle = 'rgba(246, 70, 93, 0.6)';
-                ctx.lineWidth = 1;
-                ctx.fillRect(lx, ly, labelW, labelH);
-                ctx.strokeRect(lx, ly, labelW, labelH);
-
-                ctx.textAlign = 'center';
-                ctx.fillStyle = '#f6465d';
-                ctx.font = 'bold 9px sans-serif';
-                ctx.fillText(label1, x2, ly + 11);
-                ctx.fillStyle = '#eaecef';
-                ctx.font = '9px sans-serif';
-                ctx.fillText(label2, x2, ly + 22);
-            }
+ 
+                // AL üçgeni + etiket
+                if (entryIdx !== -1) {
+                    const offsetCount = entryOffsets[entryIdx] || 0;
+                    entryOffsets[entryIdx] = offsetCount + 1;
+                    const vertOffset = offsetCount * 30; // her indikatör 30px aşağı
+ 
+                    ctx.save();
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = color;
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1 + 10 + vertOffset);
+                    ctx.lineTo(x1 - 6, y1 + 22 + vertOffset);
+                    ctx.lineTo(x1 + 6, y1 + 22 + vertOffset);
+                    ctx.fill();
+                    ctx.restore();
+ 
+                    const label1 = `AL`;
+                    const label2 = trade.entryPrice.toFixed(2);
+                    ctx.font = 'bold 8px sans-serif';
+                    const w1 = ctx.measureText(label1).width;
+                    ctx.font = '8px sans-serif';
+                    const w2 = ctx.measureText(label2).width;
+                    const labelW = Math.max(w1, w2) + 10;
+                    const labelH = 22;
+                    const lx = x1 - labelW / 2;
+                    const ly = y1 + 24 + vertOffset;
+ 
+                    ctx.fillStyle = hexToRgba(color, 0.15);
+                    ctx.strokeStyle = hexToRgba(color, 0.7);
+                    ctx.lineWidth = 1;
+                    ctx.fillRect(lx, ly, labelW, labelH);
+                    ctx.strokeRect(lx, ly, labelW, labelH);
+ 
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 8px sans-serif';
+                    ctx.fillText(label1, x1, ly + 9);
+                    ctx.fillStyle = '#eaecef';
+                    ctx.font = '8px sans-serif';
+                    ctx.fillText(label2, x1, ly + 19);
+                }
+ 
+                // SAT üçgeni + etiket
+                if (exitIdx !== -1) {
+                    const offsetCount = exitOffsets[exitIdx] || 0;
+                    exitOffsets[exitIdx] = offsetCount + 1;
+                    const vertOffset = offsetCount * 30;
+ 
+                    ctx.save();
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = color;
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.moveTo(x2, y2 - 10 - vertOffset);
+                    ctx.lineTo(x2 - 6, y2 - 22 - vertOffset);
+                    ctx.lineTo(x2 + 6, y2 - 22 - vertOffset);
+                    ctx.fill();
+                    ctx.restore();
+ 
+                    const label1 = `SAT`;
+                    const pnlStr = `${trade.pnl > 0 ? '+' : ''}${trade.pnl}%`;
+                    ctx.font = 'bold 8px sans-serif';
+                    const w1 = ctx.measureText(label1).width;
+                    ctx.font = '8px sans-serif';
+                    const w2 = ctx.measureText(pnlStr).width;
+                    const labelW = Math.max(w1, w2) + 10;
+                    const labelH = 22;
+                    const lx = x2 - labelW / 2;
+                    const ly = y2 - 48 - vertOffset;
+ 
+                    ctx.fillStyle = hexToRgba(color, 0.15);
+                    ctx.strokeStyle = hexToRgba(color, 0.7);
+                    ctx.lineWidth = 1;
+                    ctx.fillRect(lx, ly, labelW, labelH);
+                    ctx.strokeRect(lx, ly, labelW, labelH);
+ 
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 8px sans-serif';
+                    ctx.fillText(label1, x2, ly + 9);
+                    ctx.fillStyle = '#eaecef';
+                    ctx.font = '8px sans-serif';
+                    ctx.fillText(pnlStr, x2, ly + 19);
+                }
+            });
         });
-
+ 
         canvas.hoveredTrade = hoveredTrade;
-
-        // 8. CROSSHAIR + TOOLTIP
+ 
+        // 8. LEGEND (aktif indikatörler)
+        const activeNames = Object.keys(canvas.activeTradesMap);
+        if (activeNames.length > 0) {
+            const legendPad = 8;
+            const legendLineH = 18;
+            const legendW = 160;
+            const legendH = activeNames.length * legendLineH + legendPad * 2;
+            const legendX = 10;
+            const legendY = PAD_TOP + 5;
+ 
+            ctx.fillStyle = 'rgba(24, 26, 32, 0.85)';
+            ctx.strokeStyle = '#2b2f36';
+            ctx.lineWidth = 1;
+            ctx.fillRect(legendX, legendY, legendW, legendH);
+            ctx.strokeRect(legendX, legendY, legendW, legendH);
+ 
+            activeNames.forEach((name, i) => {
+                const c = INDICATOR_COLORS[name] || '#fff';
+                const y = legendY + legendPad + i * legendLineH + legendLineH / 2;
+ 
+                ctx.fillStyle = c;
+                ctx.fillRect(legendX + 8, y - 5, 12, 10);
+ 
+                ctx.fillStyle = '#eaecef';
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(name, legendX + 26, y);
+                ctx.textBaseline = 'alphabetic';
+            });
+        }
+ 
+        // 9. CROSSHAIR + TOOLTIP
         if (mouseX > 0 && mouseX < chartW && mouseY > PAD_TOP && mouseY < chartH) {
             const candleIdx = Math.floor(mouseX / cW);
-            
+ 
             if (hoveredTrade) {
-                const ttW = 200, ttH = 120;
+                const { trade, color, indicatorName } = hoveredTrade;
+                const ttW = 210, ttH = 130;
                 let tx = mouseX + 15, ty = mouseY + 15;
                 if (tx + ttW > chartW) tx = mouseX - ttW - 15;
                 if (ty + ttH > chartH) ty = mouseY - ttH - 15;
-
-                const t = hoveredTrade;
-                const color = t.isSuccess ? '#0ecb81' : '#f6465d';
-
+ 
                 ctx.fillStyle = 'rgba(30, 35, 41, 0.98)';
                 ctx.strokeStyle = color;
                 ctx.lineWidth = 1;
                 ctx.fillRect(tx, ty, ttW, ttH);
                 ctx.strokeRect(tx, ty, ttW, ttH);
-
+ 
+                // İndikatör adı renk bandı
+                ctx.fillStyle = hexToRgba(color, 0.2);
+                ctx.fillRect(tx, ty, ttW, 20);
+                ctx.fillStyle = color;
+                ctx.font = 'bold 10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(indicatorName, tx + ttW / 2, ty + 10);
+                ctx.textBaseline = 'alphabetic';
+ 
                 const lines = [
-                    [`İŞLEM #${t.id}`, '', '#f0b90b'],
-                    [`Giriş:`, `${t.entryPrice.toFixed(2)}  (${formatDateShort(t.entryTimestamp)})`, '#eaecef'],
-                    [`Çıkış:`, `${t.exitPrice.toFixed(2)}  (${formatDateShort(t.exitTimestamp)})`, '#eaecef'],
-                    [`Süre:`, `${t.duration} mum`, '#848e9c'],
-                    [`PnL:`, `${t.pnl > 0 ? '+' : ''}${t.pnl}%`, color],
-                    [`Sonuç:`, t.isSuccess ? 'KAZANÇ ✅' : 'KAYIP ❌', color]
+                    [`İşlem #${trade.id}`, '', '#f0b90b'],
+                    [`Giriş:`, `${trade.entryPrice.toFixed(2)}  (${formatDateShort(trade.entryTimestamp)})`, '#eaecef'],
+                    [`Çıkış:`, `${trade.exitPrice.toFixed(2)}  (${formatDateShort(trade.exitTimestamp)})`, '#eaecef'],
+                    [`Süre:`, `${trade.duration} mum`, '#848e9c'],
+                    [`PnL:`, `${trade.pnl > 0 ? '+' : ''}${trade.pnl}%`, trade.isSuccess ? '#0ecb81' : '#f6465d'],
+                    [`Sonuç:`, trade.isSuccess ? 'KAZANÇ ✅' : 'KAYIP ❌', trade.isSuccess ? '#0ecb81' : '#f6465d']
                 ];
-
-                ctx.textAlign = 'left';
+ 
                 lines.forEach((line, i) => {
                     ctx.fillStyle = line[2];
-                    ctx.font = i === 0 ? 'bold 11px sans-serif' : '11px sans-serif';
-                    ctx.fillText(line[0], tx + 10, ty + 18 + i * 17);
+                    ctx.font = i === 0 ? 'bold 10px sans-serif' : '10px sans-serif';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(line[0], tx + 10, ty + 32 + i * 16);
                     ctx.textAlign = 'right';
-                    ctx.fillText(line[1], tx + ttW - 10, ty + 18 + i * 17);
+                    ctx.fillText(line[1], tx + ttW - 10, ty + 32 + i * 16);
                     ctx.textAlign = 'left';
                 });
+ 
             } else if (candleIdx >= 0 && candleIdx < visible.length) {
                 const d = visible[candleIdx];
                 const x = candleIdx * cW + cW / 2;
                 const o = +d[1], h = +d[2], l = +d[3], c = +d[4], vol = +d[5] || 0;
                 const change = ((c - o) / o) * 100;
                 const changeColor = change >= 0 ? '#0ecb81' : '#f6465d';
-
+ 
                 ctx.setLineDash([4, 4]);
                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
                 ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.moveTo(x, PAD_TOP); ctx.lineTo(x, chartH); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(0, mouseY); ctx.lineTo(chartW, mouseY); ctx.stroke();
                 ctx.setLineDash([]);
-
+ 
                 const tooltipW = 170, tooltipH = 115;
                 let tx = x + 15, ty = mouseY + 15;
                 if (tx + tooltipW > chartW) tx = x - tooltipW - 15;
                 if (ty + tooltipH > chartH) ty = mouseY - tooltipH - 15;
-
+ 
                 ctx.fillStyle = 'rgba(30, 35, 41, 0.95)';
                 ctx.strokeStyle = '#2b2f36';
                 ctx.lineWidth = 1;
                 ctx.fillRect(tx, ty, tooltipW, tooltipH);
                 ctx.strokeRect(tx, ty, tooltipW, tooltipH);
-
+ 
                 const lines = [
                     [`Tarih`, formatDateShort(d[0]), '#848e9c'],
                     [`Açılış`, o.toFixed(2), '#eaecef'],
@@ -1320,7 +1532,7 @@ function mainChart(raw, initialTrades = []) {
                     [`Hacim`, vol.toLocaleString('tr-TR'), '#848e9c'],
                     [`Değişim`, `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`, changeColor]
                 ];
-
+ 
                 lines.forEach((line, i) => {
                     ctx.fillStyle = line[2];
                     ctx.font = '11px sans-serif';
@@ -1332,7 +1544,7 @@ function mainChart(raw, initialTrades = []) {
             }
         }
     };
-
+ 
     canvas.onmousedown = e => {
         isDragging = true; dragStartX = e.clientX; dragStartView = viewStart;
     };
@@ -1357,17 +1569,27 @@ function mainChart(raw, initialTrades = []) {
         viewStart = Math.max(0, Math.min(raw.length - visibleCount, viewStart));
         draw();
     };
-
+ 
     const resizeHandler = () => { syncSize(); draw(); };
     if (canvas.resizeHandler) window.removeEventListener('resize', canvas.resizeHandler);
     canvas.resizeHandler = resizeHandler;
     window.addEventListener('resize', resizeHandler);
-
-    canvas.updateTrades = (newTrades) => {
-        canvas.trades = newTrades;
+ 
+    // Dışarıdan indikatör ekle/çıkar
+    canvas.setIndicator = (indicatorName, trades, active) => {
+        if (active) {
+            canvas.activeTradesMap[indicatorName] = trades;
+        } else {
+            delete canvas.activeTradesMap[indicatorName];
+        }
         draw();
     };
-
+ 
+    // Eski updateTrades — geriye dönük uyumluluk
+    canvas.updateTrades = (newTrades) => {
+        draw();
+    };
+ 
     syncSize();
     draw();
 }

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC/USDT Live Trades</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #090c10;
+    --panel:    #0e1318;
+    --border:   #1c2530;
+    --green:    #00e676;
+    --red:      #ff3d5a;
+    --yellow:   #ffd600;
+    --text:     #c9d1d9;
+    --muted:    #4a5568;
+    --glow-g:   0 0 18px rgba(0,230,118,.35);
+    --glow-r:   0 0 18px rgba(255,61,90,.35);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 28px;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #fff;
+  }
+
+  .logo span { color: var(--yellow); }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 20px;
+    transition: color .3s, border-color .3s;
+  }
+
+  .live-badge.connected { color: var(--green); border-color: var(--green); }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background .3s;
+  }
+
+  .live-badge.connected .dot {
+    background: var(--green);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:.4; transform:scale(1.5); }
+  }
+
+  /* ── Stats bar ── */
+  .stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 20px;
+    min-width: 160px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    transition: color .2s;
+  }
+
+  .stat-value.up   { color: var(--green); text-shadow: var(--glow-g); }
+  .stat-value.down { color: var(--red);   text-shadow: var(--glow-r); }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .trade-count {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 20px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+  }
+
+  thead th:last-child { text-align: right; }
+
+  tbody tr {
+    border-bottom: 1px solid rgba(28,37,48,.6);
+    animation: fadeIn .25s ease;
+    transition: background .15s;
+  }
+
+  tbody tr:hover { background: rgba(255,255,255,.025); }
+  tbody tr:last-child { border-bottom: none; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  td {
+    padding: 11px 20px;
+    font-size: 13px;
+  }
+
+  td:last-child { text-align: right; }
+
+  .side {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .8px;
+    padding: 3px 9px;
+    border-radius: 4px;
+  }
+
+  .side.BUY  { background: rgba(0,230,118,.1);  color: var(--green); }
+  .side.SELL { background: rgba(255,61,90,.1);   color: var(--red); }
+
+  .price.BUY  { color: var(--green); }
+  .price.SELL { color: var(--red); }
+
+  .time-cell { color: var(--muted); font-size: 12px; }
+
+  /* ── Empty state ── */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">BTC<span>/USDT</span></div>
+  <div class="live-badge" id="badge">
+    <div class="dot"></div>
+    <span id="badge-text">BAĞLANIYOR</span>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat-card">
+    <div class="stat-label">Son Fiyat</div>
+    <div class="stat-value" id="last-price">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Son Miktar</div>
+    <div class="stat-value" id="last-qty">—</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Toplam İşlem</div>
+    <div class="stat-value" id="total-count">0</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Son Yön</div>
+    <div class="stat-value" id="last-side">—</div>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <div class="table-header">
+    <span class="table-title">Canlı İşlemler</span>
+    <span class="trade-count" id="showing-count">—</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Yön</th>
+        <th>Fiyat (USDT)</th>
+        <th>Miktar (BTC)</th>
+        <th>Saat</th>
+      </tr>
+    </thead>
+    <tbody id="trade-body">
+      <tr>
+        <td colspan="5">
+          <div class="empty">
+            <div class="empty-icon">📡</div>
+            Python sunucusunu başlat: <strong>python binance_server.py</strong>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const MAX_ROWS = 50;
+  const trades = [];
+  let totalCount = 0;
+
+  const badge      = document.getElementById('badge');
+  const badgeText  = document.getElementById('badge-text');
+  const tbody      = document.getElementById('trade-body');
+  const lastPrice  = document.getElementById('last-price');
+  const lastQty    = document.getElementById('last-qty');
+  const totalEl    = document.getElementById('total-count');
+  const lastSide   = document.getElementById('last-side');
+  const showingEl  = document.getElementById('showing-count');
+
+  function formatTime(ts) {
+    return new Date(ts).toLocaleTimeString('tr-TR', { hour12: false });
+  }
+
+  function formatPrice(p) {
+    return parseFloat(p).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function formatQty(q) {
+    return parseFloat(q).toFixed(5);
+  }
+
+  function render() {
+    tbody.innerHTML = '';
+    trades.forEach((t, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="time-cell">${trades.length - i}</td>
+        <td><span class="side ${t.side}">${t.side === 'BUY' ? '▲ AL' : '▼ SAT'}</span></td>
+        <td class="price ${t.side}">${formatPrice(t.price)}</td>
+        <td>${formatQty(t.qty)}</td>
+        <td class="time-cell">${formatTime(t.time)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    showingEl.textContent = `${trades.length} işlem gösteriliyor`;
+  }
+
+  function connect() {
+    const ws = new WebSocket('ws://164.68.110.130:8765/');
+
+    ws.onopen = () => {
+      badge.classList.add('connected');
+      badgeText.textContent = 'CANLI';
+    };
+
+    ws.onclose = () => {
+      badge.classList.remove('connected');
+      badgeText.textContent = 'BAĞLANTI YOK';
+      setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => ws.close();
+
+    ws.onmessage = (e) => {
+      const t = JSON.parse(e.data);
+      trades.unshift(t);
+      if (trades.length > MAX_ROWS) trades.pop();
+      totalCount++;
+
+      // Stats
+      lastPrice.textContent = formatPrice(t.price);
+      lastPrice.className   = 'stat-value ' + (t.side === 'BUY' ? 'up' : 'down');
+      lastQty.textContent   = formatQty(t.qty);
+      totalEl.textContent   = totalCount;
+      lastSide.textContent  = t.side === 'BUY' ? '▲ AL' : '▼ SAT';
+      lastSide.className    = 'stat-value ' + (t.side === 'BUY' ? 'up' : 'down');
+
+      render();
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>

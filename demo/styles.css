@@ -1,0 +1,44 @@
+body {
+    background: #0b0e11;
+    color: white;
+    font-family: sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+.times {
+    display: flex;
+    flex-wrap: nowrap;       /* Mobilde butonların taşmasını önler */
+    justify-content: center; /* Yatayda tam merkezleme */
+    align-items: center;    /* Dikeyde hizalama */
+    gap: 8px;              /* Butonlar arası boşluk */
+    margin: 20px auto;     /* Üstten boşluk bırakır ve kapsayıcıyı ortalar */
+    max-width: 800px;      /* Çok geniş ekranlarda yayılmasını engeller */
+}
+
+.times button {
+    background: #1e2329;    /* Binance/Dark tema uyumlu */
+    color: #eaecef;
+    border: 1px solid #30363d;
+    padding: 8px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    min-width: 45px;
+}
+
+/* Hover Efekti */
+.times button:hover {
+    background-color: #2b3139;
+    border-color: #f0b90b; /* Trading vurgu rengi (Sarı/Altın) */
+    color: #f0b90b;
+}
+
+/* Tıklandığında veya Aktifken */
+.times button:active {
+    transform: scale(0.95);
+    background-color: #f0b90b;
+    color: #000;
+}
